@@ -57,10 +57,17 @@ public static class ProcessControl
     /// <summary>The most resume calls <see cref="Apply"/> makes before it reports a process that stays suspended.</summary>
     public const int MaxResumeCalls = 32;
 
+    /// <summary>The longest <see cref="WaitForRunState"/> waits in total before it returns the last state it read.</summary>
+    private static readonly TimeSpan SettleBudget = TimeSpan.FromMilliseconds(500);
+
+    /// <summary>The first pause <see cref="WaitForRunState"/> takes; each later pause is twice the one before it.</summary>
+    private static readonly TimeSpan InitialSettlePause = TimeSpan.FromMilliseconds(5);
+
     /// <summary>Opens the process and applies <paramref name="action"/> to it.</summary>
     /// <remarks>
     /// Suspending an already suspended process does nothing and succeeds, so the per-thread suspend count never climbs above
-    /// one through this call. Resuming calls the kernel until the process is no longer suspended, at most
+    /// one through this call; the call returns once the process reports itself suspended, so a state read straight after it
+    /// sees the suspend. Resuming calls the kernel until the process is no longer suspended, at most
     /// <see cref="MaxResumeCalls"/> times, so a process suspended several times by other tools runs again after one resume.
     /// </remarks>
     /// <param name="processId">The process id.</param>
@@ -77,9 +84,7 @@ public static class ProcessControl
 
         return action switch
         {
-            ProcessControlAction.Suspend => QueryRunState(processId) == ProcessRunState.Suspended
-                ? ProcessControlResult.Success
-                : FromStatus(NativeMethods.NtSuspendProcess(handle), "suspend", processId),
+            ProcessControlAction.Suspend => Suspend(handle, processId),
             ProcessControlAction.Resume => ResumeFully(handle, processId),
             ProcessControlAction.Terminate => NativeMethods.TerminateProcess(handle, 1)
                 ? ProcessControlResult.Success
@@ -136,6 +141,36 @@ public static class ProcessControl
                 process.Dispose();
             }
         }
+    }
+
+    /// <summary>Polls a state until it is the one an action settles into, then returns the state it last read.</summary>
+    /// <remarks>
+    /// Suspending and resuming a process take effect thread by thread, and a thread reports its new state only once it has
+    /// been scheduled and taken it, so a read straight after the call still sees the state from before it. The pauses
+    /// double from <see cref="InitialSettlePause"/> and stop once <see cref="SettleBudget"/> of them have passed; a state
+    /// that never settles is returned as it stands rather than failing the action.
+    /// </remarks>
+    /// <param name="readState">Reads the process state.</param>
+    /// <param name="target">The settled state being waited for; <see cref="ProcessRunState.Exited"/> ends the wait too.</param>
+    /// <param name="delay">Waits for the given time; a test passes a no-op to avoid real waits.</param>
+    /// <returns>The last state read.</returns>
+    public static ProcessRunState WaitForRunState(Func<ProcessRunState> readState, ProcessRunState target, Action<TimeSpan> delay)
+    {
+        ArgumentNullException.ThrowIfNull(readState);
+        ArgumentNullException.ThrowIfNull(delay);
+        ProcessRunState state = readState();
+        TimeSpan remaining = SettleBudget;
+        TimeSpan pause = InitialSettlePause;
+        while (state != target && state != ProcessRunState.Exited && remaining > TimeSpan.Zero)
+        {
+            TimeSpan wait = pause < remaining ? pause : remaining;
+            delay(wait);
+            remaining -= wait;
+            state = readState();
+            pause += pause;
+        }
+
+        return state;
     }
 
     /// <summary>Reads a process's start time and whether it is critical.</summary>
@@ -219,6 +254,22 @@ public static class ProcessControl
             // The process exited between the lookup and the thread read.
             return ProcessRunState.Exited;
         }
+    }
+
+    private static ProcessControlResult Suspend(SafeProcessHandle handle, int processId)
+    {
+        if (QueryRunState(processId) == ProcessRunState.Suspended)
+        {
+            return ProcessControlResult.Success;
+        }
+
+        ProcessControlResult result = FromStatus(NativeMethods.NtSuspendProcess(handle), "suspend", processId);
+        if (result.Ok)
+        {
+            WaitForRunState(() => QueryRunState(processId), ProcessRunState.Suspended, Thread.Sleep);
+        }
+
+        return result;
     }
 
     private static ProcessControlResult ResumeFully(SafeProcessHandle handle, int processId)

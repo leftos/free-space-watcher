@@ -32,8 +32,9 @@ public sealed partial class ProcessActions(ILogger<ProcessActions> logger)
         runAsClient(() => result = ProcessControl.Apply(pid, action));
         LogAction(logger, request.Action, pid, result.Ok, result.Error ?? "");
 
-        // TerminateProcess returns before the process is gone, so a read straight after a kill could still see it running.
-        ProcessState state = action == ProcessControlAction.Terminate && result.Ok ? ProcessState.Exited : QueryState(pid);
+        // TerminateProcess returns before the process is gone, and a suspend settles thread by thread, so a read straight
+        // after either could still report the state from before the action.
+        ProcessState state = result.Ok ? SettledState(pid, action) : QueryState(pid);
         return new ProcessActionResponse(result.Ok, result.AccessDenied, result.Error, state);
     }
 
@@ -64,6 +65,24 @@ public sealed partial class ProcessActions(ILogger<ProcessActions> logger)
     }
 
     private static ProcessState QueryState(int processId) => ToState(ProcessControl.QueryRunState(processId));
+
+    /// <summary>Reads the state an action that succeeded has settled into.</summary>
+    /// <param name="processId">The process id.</param>
+    /// <param name="action">The action that just ran.</param>
+    /// <returns>The settled state: a killed process is gone; a suspend or resume waits for its threads to take the change.</returns>
+    private static ProcessState SettledState(int processId, ProcessControlAction action) =>
+        action == ProcessControlAction.Terminate
+            ? ProcessState.Exited
+            : ToState(ProcessControl.WaitForRunState(() => ProcessControl.QueryRunState(processId), SettledActionState(action), Thread.Sleep));
+
+    private static ProcessRunState SettledActionState(ProcessControlAction action) =>
+        action switch
+        {
+            ProcessControlAction.Suspend => ProcessRunState.Suspended,
+            ProcessControlAction.Resume => ProcessRunState.Running,
+            ProcessControlAction.Terminate => ProcessRunState.Exited,
+            _ => throw new ArgumentOutOfRangeException(nameof(action), action, "Unknown process action."),
+        };
 
     private static ProcessState ToState(ProcessRunState state) =>
         state switch
