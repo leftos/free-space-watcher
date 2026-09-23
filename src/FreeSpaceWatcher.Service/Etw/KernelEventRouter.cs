@@ -11,7 +11,8 @@ namespace FreeSpaceWatcher.Service.Etw;
 /// A create counts as <see cref="WriteKind.Create"/> when its disposition always yields a new or emptied file (create-new,
 /// supersede, create-always). An end-of-file set (information class 20) carries the new size, not the growth, so the growth
 /// is the new size minus the last size this router saw for the path (0 after such a create or a truncating open); when no
-/// earlier size is known the growth is recorded as 0 and counted in <see cref="ExtendsWithoutBase"/>.
+/// earlier size is known the growth is recorded as 0 and counted in <see cref="ExtendsWithoutBase"/>. A growth raised by System
+/// (the cache manager) is credited to the path's last caller-writer through <see cref="ExtendAttributor"/>.
 /// </remarks>
 /// <param name="aggregators">Supplies the aggregator in use; when it is replaced, the live processes are replayed into the new one.</param>
 /// <param name="mapper">Maps the kernel's NT paths to DOS paths.</param>
@@ -26,6 +27,7 @@ internal sealed class KernelEventRouter(WriteAggregatorProvider aggregators, Dev
     private const int MaxTrackedSizes = 100_000;
     private readonly Dictionary<string, long> _endOfFile = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<int, LiveProcess> _live = [];
+    private readonly ExtendAttributor _lastWriters = new(ExtendAttributor.DefaultCapacity);
     private WriteAggregator? _aggregator;
     private long _unmapped;
     private long _extendsWithoutBase;
@@ -93,7 +95,11 @@ internal sealed class KernelEventRouter(WriteAggregatorProvider aggregators, Dev
             return;
         }
 
-        Record(data.ProcessID, data.TimeStamp, data.FileName, WriteKind.Write, data.IoSize);
+        string? path = Record(data.ProcessID, data.TimeStamp, data.FileName, WriteKind.Write, data.IoSize);
+        if (path is not null)
+        {
+            _lastWriters.Wrote(data.ProcessID, path);
+        }
     }
 
     private void OnCreate(FileIOCreateTraceData data)
@@ -139,7 +145,7 @@ internal sealed class KernelEventRouter(WriteAggregatorProvider aggregators, Dev
         }
 
         TrackSize(path, newSize);
-        RecordMapped(data.ProcessID, data.TimeStamp, path, WriteKind.Extend, growth);
+        RecordMapped(_lastWriters.CreditExtend(data.ProcessID, path), data.TimeStamp, path, WriteKind.Extend, growth);
     }
 
     private void OnDelete(FileIOInfoTraceData data)
@@ -164,6 +170,7 @@ internal sealed class KernelEventRouter(WriteAggregatorProvider aggregators, Dev
     private void OnProcessStop(ProcessTraceData data)
     {
         _live.Remove(data.ProcessID);
+        _lastWriters.ProcessEnded(data.ProcessID);
         CurrentAggregator().ProcessEnded(data.ProcessID, new DateTimeOffset(data.TimeStamp));
     }
 
