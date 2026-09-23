@@ -26,7 +26,7 @@ public sealed class WriteAggregator(TimeSpan window, int perProcessFileCap)
     {
         lock (_gate)
         {
-            _live[pid] = new TrackedProcess(pid, name, exePath, time);
+            _live[pid] = new TrackedProcess(pid, name, exePath, time, startSeen: true);
         }
     }
 
@@ -122,7 +122,7 @@ public sealed class WriteAggregator(TimeSpan window, int perProcessFileCap)
     {
         if (!_live.TryGetValue(pid, out TrackedProcess? process))
         {
-            process = new TrackedProcess(pid, Invariant($"pid {pid}"), null, time);
+            process = new TrackedProcess(pid, Invariant($"pid {pid}"), null, time, startSeen: false);
             _live.Add(pid, process);
         }
 
@@ -216,6 +216,7 @@ public sealed class WriteAggregator(TimeSpan window, int perProcessFileCap)
             ProcessId = tally.Process.Pid,
             Name = tally.Process.Name,
             ExePath = tally.Process.ExePath,
+            StartTime = tally.Process.StartSeen ? tally.Process.StartTime : null,
             BytesWritten = tally.BytesWritten,
             ExtendBytes = tally.ExtendBytes,
             FilesCreated = tally.Files.Values.Sum(s => s.Created),

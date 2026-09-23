@@ -110,5 +110,5 @@ Executed through the `plan-execution` skill with the `implementer` agent:
 ## Known limits (documented in README)
 
 - Bytes *written* ≠ space *consumed*: overwrites and deleted temp files inflate writes; the details show created/deleted and current size to compensate.
-- Memory-mapped and lazy-writer flushes can be attributed to `System`; the collector attributes by the issuing thread's process where ETW gives it, and the "unattributed" figure makes the rest visible.
+- Paging-I/O writes (lazy-writer cache flushes and mapped-page-writer flushes, `IRP_PAGING_IO` set in the FileIo event's IoFlags) are dropped so cached writes are not counted twice, once for the app and once for `System`. A program that writes only through memory-mapped views shows up through its end-of-file growth, or, if it never grows the file, only in the "unattributed" figure.
 - Any interactive user can change which drives are watched (single-user machine assumption).

@@ -45,6 +45,7 @@ public sealed class WriteAggregatorTests
         aggregator.Record(Write(2, 1, @"C:\logs\a.log", 5));
 
         ProcessWriteReport report = Assert.Single(Snap(aggregator, 'C', 2).Processes);
+        Assert.Equal(T0, report.StartTime);
         Assert.Equal(45, report.BytesWritten);
         (string, long)[] expected = [(@"C:\logs\*", 20), (@"C:\logs\a.log", 15), (@"C:\logs\b.log", 10)];
         Assert.Equal(expected, report.Files.Select(f => (f.Path, f.BytesWritten)));
@@ -108,6 +109,7 @@ public sealed class WriteAggregatorTests
 
         Assert.Equal("pid 42", report.Name);
         Assert.Null(report.ExePath);
+        Assert.Null(report.StartTime);
     }
 
     [Fact]

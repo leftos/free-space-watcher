@@ -1,7 +1,8 @@
 namespace FreeSpaceWatcher.Core.Writes;
 
 /// <summary>One process instance; a pid reused after the process ended is a different instance.</summary>
-internal sealed class TrackedProcess(int pid, string name, string? exePath, DateTimeOffset startTime)
+/// <remarks>A placeholder for a pid whose start was not seen has <paramref name="startSeen"/> false and its first event's time as start.</remarks>
+internal sealed class TrackedProcess(int pid, string name, string? exePath, DateTimeOffset startTime, bool startSeen)
 {
     private readonly Dictionary<string, TrackedFile> _files = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, TrackedFile> _folded = new(StringComparer.OrdinalIgnoreCase);
@@ -13,6 +14,8 @@ internal sealed class TrackedProcess(int pid, string name, string? exePath, Date
     public string? ExePath => exePath;
 
     public DateTimeOffset StartTime => startTime;
+
+    public bool StartSeen => startSeen;
 
     /// <summary>Returns the entry a write to <paramref name="path"/> counts against, folding it once the file cap is reached.</summary>
     public TrackedFile FileFor(string path, char drive, int fileCap)

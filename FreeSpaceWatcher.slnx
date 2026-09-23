@@ -2,6 +2,7 @@
   <Folder Name="/src/">
     <Project Path="src/FreeSpaceWatcher.Core/FreeSpaceWatcher.Core.csproj" />
     <Project Path="src/FreeSpaceWatcher.Elevate/FreeSpaceWatcher.Elevate.csproj" />
+    <Project Path="src/FreeSpaceWatcher.Native/FreeSpaceWatcher.Native.csproj" />
     <Project Path="src/FreeSpaceWatcher.Service/FreeSpaceWatcher.Service.csproj" />
     <Project Path="src/FreeSpaceWatcher.Tray/FreeSpaceWatcher.Tray.csproj" />
   </Folder>

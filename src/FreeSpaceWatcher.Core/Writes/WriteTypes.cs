@@ -56,6 +56,9 @@ public sealed record ProcessWriteReport
     /// <summary>Gets the executable path, when known.</summary>
     public required string? ExePath { get; init; }
 
+    /// <summary>Gets when the process started, or null when its start was not seen; with the pid it identifies the process instance.</summary>
+    public required DateTimeOffset? StartTime { get; init; }
+
     /// <summary>Gets the bytes the process wrote to the drive.</summary>
     public required long BytesWritten { get; init; }
 

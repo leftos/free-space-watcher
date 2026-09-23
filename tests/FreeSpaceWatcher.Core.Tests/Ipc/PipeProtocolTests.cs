@@ -142,6 +142,7 @@ public sealed class PipeProtocolTests
                     ProcessId = 42,
                     Name = "writer",
                     ExePath = null,
+                    StartTime = null,
                     BytesWritten = 100,
                     ExtendBytes = 0,
                     FilesCreated = 0,

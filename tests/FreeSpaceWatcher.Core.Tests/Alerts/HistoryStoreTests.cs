@@ -103,6 +103,7 @@ public sealed class HistoryStoreTests : IDisposable
                     ProcessId = 42,
                     Name = "writer",
                     ExePath = @"C:\tools\writer.exe",
+                    StartTime = new DateTimeOffset(2026, 9, 23, 14, 0, 0, TimeSpan.Zero),
                     BytesWritten = 100,
                     ExtendBytes = 50,
                     FilesCreated = 1,
