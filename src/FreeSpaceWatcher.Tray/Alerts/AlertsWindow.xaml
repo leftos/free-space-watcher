@@ -2,181 +2,530 @@
   x:Class="FreeSpaceWatcher.Tray.Alerts.AlertsWindow"
   xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
   xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+  xmlns:controls="clr-namespace:FreeSpaceWatcher.Tray.Controls"
   xmlns:local="clr-namespace:FreeSpaceWatcher.Tray.Alerts"
-  Title="FreeSpaceWatcher alerts"
+  Title="Alerts"
   Width="1100"
-  Height="640"
+  Height="700"
+  MinWidth="820"
+  MinHeight="520"
   WindowStartupLocation="CenterScreen"
 >
   <Window.Resources>
-    <Style x:Key="NodeButton" TargetType="Button">
-      <Setter Property="Margin" Value="4,1,0,1" />
-      <Setter Property="Padding" Value="6,0" />
-    </Style>
-    <HierarchicalDataTemplate DataType="{x:Type local:ProcessNode}" ItemsSource="{Binding Children}">
-      <StackPanel Orientation="Horizontal">
-        <TextBlock VerticalAlignment="Center" FontWeight="SemiBold" Text="{Binding Title}" />
-        <Button
-          Style="{StaticResource NodeButton}"
-          Content="Suspend"
-          IsEnabled="{Binding CanSuspend}"
-          Command="{Binding DataContext.SuspendCommand, RelativeSource={RelativeSource AncestorType=Window}}"
-          CommandParameter="{Binding}"
+    <BooleanToVisibilityConverter x:Key="VisibleWhenTrue" />
+
+    <!-- One row of the history: severity dot, drive chip, trigger, relative time, and the reason in up to two lines. -->
+    <DataTemplate x:Key="AlertRow" DataType="{x:Type local:AlertListItem}">
+      <Grid Margin="0,6">
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="Auto" />
+          <ColumnDefinition Width="*" />
+          <ColumnDefinition Width="Auto" />
+        </Grid.ColumnDefinitions>
+        <Grid.RowDefinitions>
+          <RowDefinition Height="Auto" />
+          <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+        <Ellipse
+          x:Name="Dot"
+          Width="8"
+          Height="8"
+          Margin="0,0,8,0"
+          VerticalAlignment="Center"
+          Fill="{DynamicResource SystemFillColorCriticalBrush}"
         />
-        <Button
-          Style="{StaticResource NodeButton}"
-          Content="Resume"
-          IsEnabled="{Binding CanResume}"
-          Command="{Binding DataContext.ResumeCommand, RelativeSource={RelativeSource AncestorType=Window}}"
-          CommandParameter="{Binding}"
+        <StackPanel Grid.Column="1" Orientation="Horizontal">
+          <Border Style="{StaticResource Pill}" Padding="6,0">
+            <TextBlock Text="{Binding DriveLabel}" />
+          </Border>
+          <TextBlock Margin="8,0,0,0" VerticalAlignment="Center" Style="{StaticResource CaptionText}" Text="{Binding TriggerName}" />
+        </StackPanel>
+        <TextBlock
+          Grid.Column="2"
+          Margin="8,0,0,0"
+          VerticalAlignment="Center"
+          Style="{StaticResource CaptionText}"
+          Text="{Binding RelativeTime}"
+          ToolTip="{Binding AbsoluteTime}"
         />
-        <Button
-          Style="{StaticResource NodeButton}"
-          Content="Kill"
-          Command="{Binding DataContext.KillCommand, RelativeSource={RelativeSource AncestorType=Window}}"
-          CommandParameter="{Binding}"
+        <TextBlock
+          x:Name="Reason"
+          Grid.Row="1"
+          Grid.Column="1"
+          Grid.ColumnSpan="2"
+          Margin="0,4,0,0"
+          MaxHeight="40"
+          FontWeight="SemiBold"
+          LineHeight="20"
+          LineStackingStrategy="BlockLineHeight"
+          Style="{StaticResource BodyText}"
+          Text="{Binding Reason}"
+          TextTrimming="CharacterEllipsis"
+          TextWrapping="Wrap"
         />
-      </StackPanel>
-    </HierarchicalDataTemplate>
-    <HierarchicalDataTemplate DataType="{x:Type local:GroupNode}" ItemsSource="{Binding Children}">
-      <TextBlock FontStyle="Italic" Text="{Binding Title}" />
-    </HierarchicalDataTemplate>
+      </Grid>
+      <DataTemplate.Triggers>
+        <DataTrigger Binding="{Binding IsUnacknowledged}" Value="False">
+          <Setter TargetName="Dot" Property="Fill" Value="{DynamicResource TextFillColorTertiaryBrush}" />
+          <Setter TargetName="Reason" Property="FontWeight" Value="Normal" />
+          <Setter TargetName="Reason" Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}" />
+        </DataTrigger>
+      </DataTemplate.Triggers>
+    </DataTemplate>
+
+    <!-- A folder row: path, bytes, Open folder. -->
     <DataTemplate DataType="{x:Type local:FolderNode}">
-      <StackPanel Orientation="Horizontal">
-        <TextBlock VerticalAlignment="Center" Text="{Binding Title}" />
+      <Grid Margin="0,2">
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="*" />
+          <ColumnDefinition Width="Auto" SharedSizeGroup="Bytes" />
+          <ColumnDefinition Width="Auto" SharedSizeGroup="Actions" />
+        </Grid.ColumnDefinitions>
+        <TextBlock
+          VerticalAlignment="Center"
+          Style="{StaticResource BodyText}"
+          Text="{Binding ShortPath}"
+          TextTrimming="CharacterEllipsis"
+          ToolTip="{Binding Folder.Path}"
+        />
+        <TextBlock
+          Grid.Column="1"
+          Margin="12,0"
+          HorizontalAlignment="Right"
+          VerticalAlignment="Center"
+          Style="{StaticResource CaptionText}"
+          Text="{Binding BytesText}"
+        />
         <Button
-          Style="{StaticResource NodeButton}"
-          Content="Open folder"
+          Grid.Column="2"
+          HorizontalAlignment="Right"
+          Style="{StaticResource SmallIconButton}"
+          controls:IconButton.Glyph="&#xE838;"
+          AutomationProperties.Name="Open folder"
           Command="{Binding DataContext.OpenFolderCommand, RelativeSource={RelativeSource AncestorType=Window}}"
           CommandParameter="{Binding Folder.Path}"
         />
-      </StackPanel>
+      </Grid>
     </DataTemplate>
+
+    <!-- A file row: path, created/deleted pills, bytes written, current size, Open folder and Show file. -->
     <DataTemplate DataType="{x:Type local:FileNode}">
-      <StackPanel Orientation="Horizontal">
-        <TextBlock VerticalAlignment="Center" Text="{Binding Title}" />
-        <Button
-          Style="{StaticResource NodeButton}"
-          Content="Open folder"
-          Command="{Binding DataContext.OpenFolderCommand, RelativeSource={RelativeSource AncestorType=Window}}"
-          CommandParameter="{Binding FolderPath}"
+      <Grid Margin="0,2">
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="*" />
+          <ColumnDefinition Width="Auto" SharedSizeGroup="Flags" />
+          <ColumnDefinition Width="Auto" SharedSizeGroup="Bytes" />
+          <ColumnDefinition Width="Auto" SharedSizeGroup="Size" />
+          <ColumnDefinition Width="Auto" SharedSizeGroup="Actions" />
+        </Grid.ColumnDefinitions>
+        <TextBlock
+          VerticalAlignment="Center"
+          Style="{StaticResource BodyText}"
+          Text="{Binding ShortPath}"
+          TextTrimming="CharacterEllipsis"
+          ToolTip="{Binding File.Path}"
         />
-        <Button
-          Style="{StaticResource NodeButton}"
-          Content="Show file"
-          Command="{Binding DataContext.ShowFileCommand, RelativeSource={RelativeSource AncestorType=Window}}"
-          CommandParameter="{Binding}"
+        <StackPanel Grid.Column="1" Margin="8,0,0,0" Orientation="Horizontal">
+          <Border
+            Margin="4,0,0,0"
+            Style="{StaticResource Pill}"
+            Padding="6,0"
+            Visibility="{Binding File.Created, Converter={StaticResource VisibleWhenTrue}}"
+          >
+            <TextBlock Text="Created" />
+          </Border>
+          <Border
+            Margin="4,0,0,0"
+            Style="{StaticResource Pill}"
+            Padding="6,0"
+            Visibility="{Binding File.Deleted, Converter={StaticResource VisibleWhenTrue}}"
+          >
+            <TextBlock Text="Deleted" />
+          </Border>
+        </StackPanel>
+        <TextBlock
+          Grid.Column="2"
+          Margin="12,0,0,0"
+          HorizontalAlignment="Right"
+          VerticalAlignment="Center"
+          Style="{StaticResource CaptionText}"
+          Text="{Binding BytesText}"
         />
-      </StackPanel>
+        <TextBlock
+          Grid.Column="3"
+          Margin="12,0"
+          HorizontalAlignment="Right"
+          VerticalAlignment="Center"
+          Style="{StaticResource CaptionText}"
+          Text="{Binding SizeText}"
+        />
+        <StackPanel Grid.Column="4" Orientation="Horizontal">
+          <Button
+            Style="{StaticResource SmallIconButton}"
+            controls:IconButton.Glyph="&#xE838;"
+            AutomationProperties.Name="Open folder"
+            Command="{Binding DataContext.OpenFolderCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+            CommandParameter="{Binding FolderPath}"
+          />
+          <Button
+            Margin="4,0,0,0"
+            Style="{StaticResource SmallIconButton}"
+            controls:IconButton.Glyph="&#xE8E5;"
+            AutomationProperties.Name="Show file"
+            Command="{Binding DataContext.ShowFileCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+            CommandParameter="{Binding}"
+          />
+        </StackPanel>
+      </Grid>
     </DataTemplate>
+
+    <!-- The "Folders (N)" or "Files (N)" expander of a writer's card. -->
+    <DataTemplate DataType="{x:Type local:GroupNode}">
+      <Expander Margin="0,8,0,0" Header="{Binding Header}" IsExpanded="{Binding IsExpanded}">
+        <ItemsControl Margin="0,4,0,0" Grid.IsSharedSizeScope="True" ItemsSource="{Binding Children}" />
+      </Expander>
+    </DataTemplate>
+
+    <!-- A writer's card: name, state pill, pid and exe, actions, write summary, bar relative to the top writer, and its groups. -->
+    <DataTemplate x:Key="WriterCard" DataType="{x:Type local:ProcessNode}">
+      <Border Style="{StaticResource Card}" Margin="0,0,0,12">
+        <StackPanel>
+          <Grid>
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="*" />
+              <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <Grid.RowDefinitions>
+              <RowDefinition Height="Auto" />
+              <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+            <StackPanel VerticalAlignment="Center" Orientation="Horizontal">
+              <TextBlock VerticalAlignment="Center" Style="{StaticResource SubtitleText}" Text="{Binding Report.Name}" />
+              <Border x:Name="StatePill" Margin="8,0,0,0" Style="{StaticResource Pill}" Visibility="Collapsed">
+                <TextBlock Text="{Binding StateText}" />
+              </Border>
+            </StackPanel>
+            <TextBlock
+              Grid.Row="1"
+              Grid.ColumnSpan="2"
+              Margin="0,4,0,0"
+              Style="{StaticResource CaptionText}"
+              TextTrimming="CharacterEllipsis"
+              ToolTip="{Binding ExePath}"
+            >
+              <Run Text="{Binding PidText, Mode=OneWay}" />
+              <Run Text="{Binding ShortExePath, Mode=OneWay}" />
+            </TextBlock>
+            <StackPanel Grid.Column="1" Margin="12,0,0,0" VerticalAlignment="Top" Orientation="Horizontal">
+              <Button
+                MinWidth="80"
+                Content="Suspend"
+                IsEnabled="{Binding CanSuspend}"
+                Command="{Binding DataContext.SuspendCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                CommandParameter="{Binding}"
+              />
+              <Button
+                MinWidth="80"
+                Margin="8,0,0,0"
+                Content="Resume"
+                IsEnabled="{Binding CanResume}"
+                Command="{Binding DataContext.ResumeCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                CommandParameter="{Binding}"
+              />
+              <Button
+                MinWidth="80"
+                Margin="8,0,0,0"
+                Style="{StaticResource CriticalButton}"
+                Content="Kill"
+                IsEnabled="{Binding CanKill}"
+                Command="{Binding DataContext.KillCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                CommandParameter="{Binding}"
+              />
+            </StackPanel>
+          </Grid>
+          <TextBlock Margin="0,12,0,0" Style="{StaticResource BodyText}" Text="{Binding WriteSummary}" TextTrimming="CharacterEllipsis" />
+          <Grid Margin="0,8,0,0" Visibility="{Binding ShowWriterBar, Converter={StaticResource VisibleWhenTrue}}">
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="*" />
+              <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <ProgressBar
+              Height="4"
+              MinHeight="4"
+              VerticalAlignment="Center"
+              Background="{DynamicResource ControlStrokeColorDefaultBrush}"
+              Maximum="1"
+              Minimum="0"
+              Value="{Binding BarFraction, Mode=OneWay}"
+              AutomationProperties.Name="Bytes written, relative to the top writer"
+            />
+            <TextBlock
+              Grid.Column="1"
+              Margin="8,0,0,0"
+              VerticalAlignment="Center"
+              Style="{StaticResource CaptionText}"
+              Text="{Binding WriterShareText}"
+            />
+          </Grid>
+          <ItemsControl Margin="0,4,0,0" ItemsSource="{Binding Children}" />
+        </StackPanel>
+      </Border>
+      <DataTemplate.Triggers>
+        <DataTrigger Binding="{Binding State}" Value="Suspended">
+          <Setter TargetName="StatePill" Property="Visibility" Value="Visible" />
+          <Setter TargetName="StatePill" Property="Style" Value="{StaticResource CautionPill}" />
+        </DataTrigger>
+        <DataTrigger Binding="{Binding State}" Value="Exited">
+          <Setter TargetName="StatePill" Property="Visibility" Value="Visible" />
+        </DataTrigger>
+      </DataTemplate.Triggers>
+    </DataTemplate>
+
+    <!-- A metric in the details header: label in caption, value in subtitle. -->
+    <Style x:Key="MetricLabel" TargetType="TextBlock" BasedOn="{StaticResource CaptionText}" />
+    <Style x:Key="MetricValue" TargetType="TextBlock" BasedOn="{StaticResource SubtitleText}">
+      <Setter Property="Margin" Value="0,2,12,0" />
+      <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+    </Style>
   </Window.Resources>
 
-  <DockPanel Margin="8">
-    <TextBlock DockPanel.Dock="Top" Margin="0,0,0,6" Foreground="Firebrick" TextWrapping="Wrap" Text="{Binding ErrorMessage}">
-      <TextBlock.Style>
-        <Style TargetType="TextBlock">
+  <DockPanel>
+    <TextBlock DockPanel.Dock="Top" Margin="24,16,24,12" Style="{StaticResource TitleText}" Text="Alerts" />
+
+    <Border DockPanel.Dock="Top" Margin="24,0,24,12">
+      <Border.Style>
+        <Style TargetType="Border" BasedOn="{StaticResource CriticalInfoStrip}">
           <Style.Triggers>
             <DataTrigger Binding="{Binding ErrorMessage}" Value="{x:Null}">
               <Setter Property="Visibility" Value="Collapsed" />
             </DataTrigger>
           </Style.Triggers>
         </Style>
-      </TextBlock.Style>
-    </TextBlock>
-    <Grid>
-      <Grid.ColumnDefinitions>
-        <ColumnDefinition Width="380" />
-        <ColumnDefinition Width="6" />
-        <ColumnDefinition Width="*" />
-      </Grid.ColumnDefinitions>
-      <DockPanel Grid.Column="0">
-        <StackPanel DockPanel.Dock="Top" Margin="0,0,0,6" Orientation="Horizontal">
-          <Button Padding="8,2" Content="Refresh" Command="{Binding RefreshCommand}" />
-          <Button Margin="6,0,0,0" Padding="8,2" Content="Acknowledge all" Command="{Binding AcknowledgeAllCommand}" />
-          <Button Margin="6,0,0,0" Padding="8,2" Content="Clear" Command="{Binding ClearCommand}" />
-          <Button Margin="6,0,0,0" Padding="8,2" Content="Clear all" Command="{Binding ClearAllCommand}" />
-        </StackPanel>
-        <ListBox ItemsSource="{Binding Alerts}" SelectionMode="Extended" VirtualizingPanel.IsVirtualizing="False">
-          <ListBox.ItemContainerStyle>
-            <Style TargetType="ListBoxItem">
-              <Setter Property="IsSelected" Value="{Binding IsSelected, Mode=TwoWay}" />
-            </Style>
-          </ListBox.ItemContainerStyle>
-          <ListBox.ContextMenu>
-            <ContextMenu>
-              <MenuItem Header="Acknowledge" Command="{Binding AcknowledgeSelectedCommand}" />
-              <MenuItem Header="Clear" Command="{Binding ClearCommand}" />
-            </ContextMenu>
-          </ListBox.ContextMenu>
-          <ListBox.ItemTemplate>
-            <DataTemplate>
-              <TextBlock Text="{Binding Display}">
-                <TextBlock.Style>
-                  <Style TargetType="TextBlock">
-                    <Style.Triggers>
-                      <DataTrigger Binding="{Binding IsUnacknowledged}" Value="True">
-                        <Setter Property="FontWeight" Value="Bold" />
-                      </DataTrigger>
-                    </Style.Triggers>
-                  </Style>
-                </TextBlock.Style>
-              </TextBlock>
-            </DataTemplate>
-          </ListBox.ItemTemplate>
-        </ListBox>
+      </Border.Style>
+      <DockPanel>
+        <TextBlock Margin="0,0,12,0" Foreground="{DynamicResource SystemFillColorCriticalBrush}" Style="{StaticResource GlyphText}" Text="&#xEA39;" />
+        <TextBlock VerticalAlignment="Center" Style="{StaticResource CriticalText}" Text="{Binding ErrorMessage}" TextWrapping="Wrap" />
       </DockPanel>
-      <GridSplitter Grid.Column="1" Width="6" HorizontalAlignment="Stretch" />
-      <DockPanel Grid.Column="2">
-        <Grid DockPanel.Dock="Top" Margin="0,0,0,8">
-          <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="Auto" />
-            <ColumnDefinition Width="*" />
-          </Grid.ColumnDefinitions>
-          <Grid.RowDefinitions>
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
-          </Grid.RowDefinitions>
-          <TextBlock Grid.Row="0" Grid.ColumnSpan="2" FontSize="16" FontWeight="SemiBold" Text="{Binding Details.Title}" />
-          <TextBlock Grid.Row="1" Grid.Column="0" Margin="0,0,12,0" Text="Reason" />
-          <TextBlock Grid.Row="1" Grid.Column="1" TextWrapping="Wrap" Text="{Binding Details.Reason}" />
-          <TextBlock Grid.Row="2" Grid.Column="0" Margin="0,0,12,0" Text="Free" />
-          <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding Details.Free}" />
-          <TextBlock Grid.Row="3" Grid.Column="0" Margin="0,0,12,0" Text="Rate" />
-          <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding Details.Rate}" />
-          <TextBlock Grid.Row="4" Grid.Column="0" Margin="0,0,12,0" Text="Full in" />
-          <TextBlock Grid.Row="4" Grid.Column="1" Text="{Binding Details.Eta}" />
-          <TextBlock Grid.Row="5" Grid.Column="0" Margin="0,0,12,0" Text="Unattributed" />
-          <TextBlock Grid.Row="5" Grid.Column="1" Text="{Binding Details.Unattributed}" />
+    </Border>
+
+    <Grid Margin="24,0,24,24">
+      <Grid.ColumnDefinitions>
+        <ColumnDefinition Width="340" MinWidth="260" />
+        <ColumnDefinition Width="12" />
+        <ColumnDefinition Width="*" MinWidth="400" />
+      </Grid.ColumnDefinitions>
+
+      <DockPanel Grid.Column="0">
+        <StackPanel DockPanel.Dock="Top" Margin="0,0,0,8" Orientation="Horizontal">
           <Button
-            Grid.Row="6"
-            Grid.ColumnSpan="2"
-            Margin="0,6,0,0"
-            HorizontalAlignment="Left"
-            Padding="8,2"
-            Content="Acknowledge"
-            Command="{Binding AcknowledgeCommand}"
+            Style="{StaticResource IconButton}"
+            controls:IconButton.Glyph="&#xE72C;"
+            AutomationProperties.Name="Refresh"
+            Command="{Binding RefreshCommand}"
           />
-        </Grid>
-        <TextBlock DockPanel.Dock="Bottom" Margin="0,6,0,0" TextWrapping="Wrap" Text="{Binding ActionStatus}">
-          <TextBlock.Style>
-            <Style TargetType="TextBlock">
+          <Button
+            Margin="4,0,0,0"
+            Style="{StaticResource IconButton}"
+            controls:IconButton.Glyph="&#xE8FB;"
+            AutomationProperties.Name="Acknowledge all"
+            Command="{Binding AcknowledgeAllCommand}"
+          />
+          <Button
+            Margin="4,0,0,0"
+            Style="{StaticResource IconButton}"
+            controls:IconButton.Glyph="&#xE894;"
+            AutomationProperties.Name="Clear selected alerts"
+            Command="{Binding ClearCommand}"
+          />
+          <Button
+            Margin="4,0,0,0"
+            Style="{StaticResource CriticalIconButton}"
+            controls:IconButton.Glyph="&#xE74D;"
+            AutomationProperties.Name="Clear all alerts"
+            Command="{Binding ClearAllCommand}"
+          />
+        </StackPanel>
+        <Border Style="{StaticResource Card}" Padding="4">
+          <Grid>
+            <ListBox
+              Background="Transparent"
+              BorderThickness="0"
+              ItemTemplate="{StaticResource AlertRow}"
+              ItemsSource="{Binding Alerts}"
+              ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+              SelectionMode="Extended"
+              VirtualizingPanel.IsVirtualizing="False"
+              AutomationProperties.Name="Alert history"
+            >
+              <ListBox.ItemContainerStyle>
+                <Style TargetType="ListBoxItem" BasedOn="{StaticResource {x:Type ListBoxItem}}">
+                  <Setter Property="IsSelected" Value="{Binding IsSelected, Mode=TwoWay}" />
+                  <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                </Style>
+              </ListBox.ItemContainerStyle>
+              <ListBox.ContextMenu>
+                <ContextMenu>
+                  <MenuItem Header="Acknowledge" Command="{Binding AcknowledgeSelectedCommand}" />
+                  <MenuItem Header="Clear" Command="{Binding ClearCommand}" />
+                </ContextMenu>
+              </ListBox.ContextMenu>
+            </ListBox>
+            <TextBlock
+              Margin="16"
+              HorizontalAlignment="Center"
+              VerticalAlignment="Center"
+              Style="{StaticResource CaptionText}"
+              Text="No alerts. Free Space Watcher will list them here when a drive fills fast."
+              TextAlignment="Center"
+              TextWrapping="Wrap"
+              Visibility="{Binding IsEmpty, Converter={StaticResource VisibleWhenTrue}}"
+            />
+          </Grid>
+        </Border>
+      </DockPanel>
+
+      <GridSplitter Grid.Column="1" Width="12" HorizontalAlignment="Stretch" Background="Transparent" />
+
+      <DockPanel Grid.Column="2">
+        <Border x:Name="ActionStrip" DockPanel.Dock="Top" Margin="0,0,0,12">
+          <Border.Style>
+            <Style TargetType="Border" BasedOn="{StaticResource InfoStrip}">
+              <Setter Property="Background" Value="{DynamicResource SystemFillColorSuccessBackgroundBrush}" />
               <Style.Triggers>
                 <DataTrigger Binding="{Binding ActionStatus}" Value="{x:Null}">
                   <Setter Property="Visibility" Value="Collapsed" />
                 </DataTrigger>
                 <DataTrigger Binding="{Binding ActionFailed}" Value="True">
-                  <Setter Property="Foreground" Value="Firebrick" />
+                  <Setter Property="Background" Value="{DynamicResource SystemFillColorCriticalBackgroundBrush}" />
                 </DataTrigger>
               </Style.Triggers>
             </Style>
-          </TextBlock.Style>
-        </TextBlock>
-        <TreeView ItemsSource="{Binding Details.Processes}" />
+          </Border.Style>
+          <DockPanel>
+            <TextBlock DockPanel.Dock="Left" Margin="0,0,12,0" Text="&#xE73E;">
+              <TextBlock.Style>
+                <Style TargetType="TextBlock" BasedOn="{StaticResource GlyphText}">
+                  <Setter Property="Foreground" Value="{DynamicResource SystemFillColorSuccessBrush}" />
+                  <Style.Triggers>
+                    <DataTrigger Binding="{Binding ActionFailed}" Value="True">
+                      <Setter Property="Text" Value="&#xEA39;" />
+                      <Setter Property="Foreground" Value="{DynamicResource SystemFillColorCriticalBrush}" />
+                    </DataTrigger>
+                  </Style.Triggers>
+                </Style>
+              </TextBlock.Style>
+            </TextBlock>
+            <Button
+              DockPanel.Dock="Right"
+              Margin="12,0,0,0"
+              VerticalAlignment="Center"
+              Style="{StaticResource SmallIconButton}"
+              controls:IconButton.Glyph="&#xE711;"
+              AutomationProperties.Name="Dismiss"
+              Command="{Binding DismissActionStatusCommand}"
+            />
+            <TextBlock VerticalAlignment="Center" Text="{Binding ActionStatus}" TextWrapping="Wrap">
+              <TextBlock.Style>
+                <Style TargetType="TextBlock" BasedOn="{StaticResource BodyText}">
+                  <Style.Triggers>
+                    <DataTrigger Binding="{Binding ActionFailed}" Value="True">
+                      <Setter Property="Foreground" Value="{DynamicResource SystemFillColorCriticalBrush}" />
+                    </DataTrigger>
+                  </Style.Triggers>
+                </Style>
+              </TextBlock.Style>
+            </TextBlock>
+          </DockPanel>
+        </Border>
+
+        <Grid>
+          <TextBlock HorizontalAlignment="Center" VerticalAlignment="Center" Text="Select an alert to see who was writing.">
+            <TextBlock.Style>
+              <Style TargetType="TextBlock" BasedOn="{StaticResource CaptionText}">
+                <Setter Property="Visibility" Value="Collapsed" />
+                <Style.Triggers>
+                  <DataTrigger Binding="{Binding Details}" Value="{x:Null}">
+                    <Setter Property="Visibility" Value="Visible" />
+                  </DataTrigger>
+                </Style.Triggers>
+              </Style>
+            </TextBlock.Style>
+          </TextBlock>
+
+          <Grid>
+            <Grid.Style>
+              <Style TargetType="Grid">
+                <Style.Triggers>
+                  <DataTrigger Binding="{Binding Details}" Value="{x:Null}">
+                    <Setter Property="Visibility" Value="Collapsed" />
+                  </DataTrigger>
+                </Style.Triggers>
+              </Style>
+            </Grid.Style>
+            <ScrollViewer DataContext="{Binding Details}" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+              <StackPanel Margin="0,0,4,0">
+                <Border Style="{StaticResource Card}">
+                  <StackPanel>
+                    <DockPanel>
+                      <Button
+                        DockPanel.Dock="Right"
+                        MinWidth="96"
+                        Margin="12,0,0,0"
+                        VerticalAlignment="Top"
+                        Content="Acknowledge"
+                        Command="{Binding DataContext.AcknowledgeCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                      />
+                      <TextBlock Style="{StaticResource TitleText}" Text="{Binding Reason}" TextWrapping="Wrap" />
+                    </DockPanel>
+                    <StackPanel Margin="0,8,0,0" Orientation="Horizontal">
+                      <Border Style="{StaticResource Pill}" Padding="6,0">
+                        <TextBlock Text="{Binding Drive}" />
+                      </Border>
+                      <TextBlock Margin="8,0,0,0" VerticalAlignment="Center" Style="{StaticResource CaptionText}">
+                        <Run Text="{Binding Time, Mode=OneWay}" />
+                        <Run Text="·" />
+                        <Run Text="{Binding TriggerName, Mode=OneWay}" />
+                      </TextBlock>
+                    </StackPanel>
+                    <UniformGrid Margin="0,16,0,0" Columns="4">
+                      <StackPanel>
+                        <TextBlock Style="{StaticResource MetricLabel}" Text="Free" />
+                        <TextBlock Style="{StaticResource MetricValue}" Text="{Binding Free}" />
+                      </StackPanel>
+                      <StackPanel>
+                        <TextBlock Style="{StaticResource MetricLabel}" Text="Rate" />
+                        <TextBlock Style="{StaticResource MetricValue}" Text="{Binding Rate}" />
+                      </StackPanel>
+                      <StackPanel>
+                        <TextBlock Style="{StaticResource MetricLabel}" Text="Full in" />
+                        <TextBlock Style="{StaticResource MetricValue}" Text="{Binding Eta}" />
+                      </StackPanel>
+                      <StackPanel>
+                        <TextBlock Style="{StaticResource MetricLabel}" Text="Unattributed" />
+                        <TextBlock Style="{StaticResource MetricValue}" Text="{Binding Unattributed}" />
+                      </StackPanel>
+                    </UniformGrid>
+                  </StackPanel>
+                </Border>
+
+                <TextBlock Margin="0,24,0,12" Style="{StaticResource SubtitleText}" Text="Writers" />
+                <TextBlock Text="No process writes were traced for this alert.">
+                  <TextBlock.Style>
+                    <Style TargetType="TextBlock" BasedOn="{StaticResource CaptionText}">
+                      <Setter Property="Visibility" Value="Collapsed" />
+                      <Style.Triggers>
+                        <DataTrigger Binding="{Binding Processes.Count}" Value="0">
+                          <Setter Property="Visibility" Value="Visible" />
+                        </DataTrigger>
+                      </Style.Triggers>
+                    </Style>
+                  </TextBlock.Style>
+                </TextBlock>
+                <ItemsControl ItemTemplate="{StaticResource WriterCard}" ItemsSource="{Binding Processes}" />
+              </StackPanel>
+            </ScrollViewer>
+          </Grid>
+        </Grid>
       </DockPanel>
     </Grid>
   </DockPanel>

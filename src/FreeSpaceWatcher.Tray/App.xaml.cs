@@ -8,8 +8,9 @@ namespace FreeSpaceWatcher.Tray;
 /// <remarks>
 /// Started with <c>--uninstall-notifications</c>, it removes its toast notification registration for the current user and
 /// exits (0 on success, 1 on failure) without showing the tray or taking the single-instance mutex. Otherwise it takes
-/// <c>--theme light|dark|system</c> and <c>--open alerts|settings|status</c> (see <see cref="TrayArguments"/>); a second launch
-/// while a tray runs hands its <c>--open</c> window to that tray through <see cref="TrayInstanceChannel"/> and exits.
+/// <c>--theme light|dark|system</c>, <c>--open alerts|settings|status</c> and <c>--select-latest</c> (see <see cref="TrayArguments"/>);
+/// a second launch while a tray runs hands its <c>--open</c> window, without <c>--select-latest</c>, to that tray through
+/// <see cref="TrayInstanceChannel"/> and exits.
 /// </remarks>
 public sealed partial class App : Application, IDisposable
 {
@@ -90,7 +91,7 @@ public sealed partial class App : Application, IDisposable
 
         _instanceMutex = mutex;
         _host = new TrayHost(Dispatcher, _log);
-        _host.Start(_arguments.Open);
+        _host.Start(_arguments.Open, _arguments.SelectLatest);
         _channel = TrayInstanceChannel.Listen(TrayInstanceChannel.SessionPipeName, window => Dispatcher.BeginInvoke(() => _host?.Open(window)), _log);
     }
 

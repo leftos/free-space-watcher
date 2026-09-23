@@ -74,6 +74,32 @@ public sealed class TrayArgumentsTests
     }
 
     [Fact]
+    public void SelectLatest_WithOpenAlerts_IsApplied_InEitherOrder()
+    {
+        var before = TrayArguments.Parse(["--select-latest", "--open", "alerts"]);
+        var after = TrayArguments.Parse(["--open", "alerts", "--SELECT-LATEST"]);
+
+        Assert.True(before.SelectLatest);
+        Assert.True(after.SelectLatest);
+        Assert.Empty(before.Problems);
+        Assert.Empty(after.Problems);
+    }
+
+    [Fact]
+    public void SelectLatest_Absent_IsOff() => Assert.False(TrayArguments.Parse(["--open", "alerts"]).SelectLatest);
+
+    [Theory]
+    [InlineData("--open", "settings")]
+    [InlineData("--theme", "dark")]
+    public void SelectLatest_WithoutOpenAlerts_IsIgnoredAndReported(string option, string value)
+    {
+        var parsed = TrayArguments.Parse(["--select-latest", option, value]);
+
+        Assert.False(parsed.SelectLatest);
+        Assert.Equal("Ignored --select-latest: it needs --open alerts.", Assert.Single(parsed.Problems));
+    }
+
+    [Fact]
     public void UnknownArgument_IsIgnoredAndReported_AndTheRestStillParse()
     {
         var parsed = TrayArguments.Parse(["--verbose", "--open", "settings"]);

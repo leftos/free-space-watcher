@@ -15,12 +15,17 @@ namespace FreeSpaceWatcher.Tray.Alerts;
 /// <param name="dialogs">Confirmations and error messages.</param>
 /// <param name="shell">Explorer and the elevation helper.</param>
 /// <param name="log">Receives each process action and its outcome.</param>
-public sealed partial class AlertsViewModel(IServiceChannel channel, IUserDialogs dialogs, IShellActions shell, ITrayLog log) : ObservableObject
+/// <param name="clock">The current time and time zone, for the rows' relative times and the details' absolute time.</param>
+public sealed partial class AlertsViewModel(IServiceChannel channel, IUserDialogs dialogs, IShellActions shell, ITrayLog log, TimeProvider clock)
+    : ObservableObject
 {
     private string? _statusAlertId;
 
     /// <summary>Gets the alert history, newest first; each row's <see cref="AlertListItem.IsSelected"/> is the list's selection.</summary>
     public ObservableCollection<AlertListItem> Alerts { get; } = [];
+
+    /// <summary>Gets whether the history is empty, which shows the list's empty state.</summary>
+    public bool IsEmpty => Alerts.Count == 0;
 
     /// <summary>Gets the selected rows, in list order.</summary>
     public IReadOnlyList<AlertListItem> SelectedAlerts => [.. Alerts.Where(a => a.IsSelected)];
@@ -38,7 +43,7 @@ public sealed partial class AlertsViewModel(IServiceChannel channel, IUserDialog
     [ObservableProperty]
     public partial string? ErrorMessage { get; private set; }
 
-    /// <summary>Gets the outcome of the last process action, shown under the details; cleared when another alert is selected.</summary>
+    /// <summary>Gets the outcome of the last process action, shown above the details; cleared when another alert is selected.</summary>
     [ObservableProperty]
     public partial string? ActionStatus { get; private set; }
 
@@ -69,6 +74,20 @@ public sealed partial class AlertsViewModel(IServiceChannel channel, IUserDialog
             {
                 item.IsSelected = item.Summary.Id == alertId;
             }
+        }
+    }
+
+    /// <summary>Selects the newest alert alone, which shows its details; does nothing while the list is empty.</summary>
+    public void SelectLatest()
+    {
+        if (Alerts.Count == 0)
+        {
+            return;
+        }
+
+        foreach (AlertListItem item in Alerts)
+        {
+            item.IsSelected = ReferenceEquals(item, Alerts[0]);
         }
     }
 
@@ -151,14 +170,16 @@ public sealed partial class AlertsViewModel(IServiceChannel channel, IUserDialog
         }
 
         Alerts.Clear();
+        DateTimeOffset now = clock.GetUtcNow();
         foreach (AlertSummary summary in summaries.OrderByDescending(a => a.Time))
         {
-            AlertListItem item = new(summary) { IsSelected = selectedIds.Contains(summary.Id) };
+            AlertListItem item = new(summary, now, clock.LocalTimeZone) { IsSelected = selectedIds.Contains(summary.Id) };
             item.PropertyChanged += OnItemPropertyChanged;
             Alerts.Add(item);
         }
 
         SelectedAlert = shownId is null ? null : Alerts.FirstOrDefault(a => a.Summary.Id == shownId);
+        OnPropertyChanged(nameof(IsEmpty));
         NotifyListCommands();
     }
 
@@ -214,7 +235,7 @@ public sealed partial class AlertsViewModel(IServiceChannel channel, IUserDialog
             return;
         }
 
-        Details = response.Alert is null ? null : AlertDetails.From(response.Alert);
+        Details = response.Alert is null ? null : AlertDetails.From(response.Alert, clock.LocalTimeZone);
         if (response.Alert is null)
         {
             ErrorMessage = $"Alert {alertId} is no longer in the history.";
@@ -267,6 +288,13 @@ public sealed partial class AlertsViewModel(IServiceChannel channel, IUserDialog
         _statusAlertId = alertId;
         ActionStatus = text;
         ActionFailed = failed;
+    }
+
+    [RelayCommand]
+    private void DismissActionStatus()
+    {
+        ActionStatus = null;
+        ActionFailed = false;
     }
 
     private bool CanAcknowledge() => Details is { Acknowledged: false };

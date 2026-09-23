@@ -9,6 +9,8 @@
 - A per-process write-volume alert catches runaway writers even while free space is still plentiful.
 - A tray app shows toasts, per-drive free space and time to full, and the alert history.
 - A settings window picks watched drives and per-drive thresholds.
+- A Status window shows each drive's free space, loss rate, time to full and a 10-minute free-space chart.
+- The tray windows use the Windows 11 look and follow light or dark mode.
 - Suspend, resume or kill a writing process from an alert, with a UAC retry when your account can't touch it.
 - Open a writer's folder or show a file in Explorer from an alert or its toast.
 - Acknowledge all, Clear and Clear all in the Alerts window and its right-click menu, plus Acknowledge all in the tray menu.

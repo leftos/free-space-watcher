@@ -6,7 +6,8 @@ using FreeSpaceWatcher.Tray.Status;
 
 namespace FreeSpaceWatcher.Tray.Settings;
 
-/// <summary>One drive in the settings grid: whether it is watched, its live status, and its threshold overrides.</summary>
+/// <summary>One drive's card in the settings: whether it is watched, its live status, and its threshold overrides.</summary>
+/// <remarks>The drive's volume label is read once, when the row is created.</remarks>
 /// <param name="letter">The drive letter, e.g. "C".</param>
 /// <param name="culture">The culture the override fields use.</param>
 public sealed partial class DriveRow(string letter, IFormatProvider culture) : ObservableObject
@@ -17,21 +18,32 @@ public sealed partial class DriveRow(string letter, IFormatProvider culture) : O
     /// <summary>Gets the drive as shown, e.g. "C:".</summary>
     public string Label => $"{Letter}:";
 
+    /// <summary>Gets the drive's volume label, or an empty string when it has none or it could not be read.</summary>
+    public string VolumeLabel { get; } = DriveCardViewModel.ReadVolumeLabel(letter);
+
     /// <summary>Gets or sets whether the drive is watched.</summary>
     [ObservableProperty]
     public partial bool Watched { get; set; }
 
-    /// <summary>Gets the live free space.</summary>
+    /// <summary>Gets or sets whether the "Custom thresholds" expander is open; it starts open for a drive with an override.</summary>
     [ObservableProperty]
-    public partial string Free { get; private set; } = StatusText.Unknown;
+    public partial bool ThresholdsExpanded { get; set; }
 
-    /// <summary>Gets the live rate.</summary>
+    /// <summary>Gets the live free space and size, e.g. "73.8 GB free of 931.5 GB", or "Not available".</summary>
     [ObservableProperty]
-    public partial string Rate { get; private set; } = StatusText.Unknown;
+    public partial string FreeText { get; private set; } = StatusText.Unknown;
 
-    /// <summary>Gets the live time-to-full estimate.</summary>
+    /// <summary>Gets the used fraction of the drive, from 0 to 1, for the free-space bar.</summary>
     [ObservableProperty]
-    public partial string Eta { get; private set; } = StatusText.Unknown;
+    public partial double UsedFraction { get; private set; }
+
+    /// <summary>Gets the free-space bar's severity, from the saved thresholds; alerts do not count here.</summary>
+    [ObservableProperty]
+    public partial DriveSeverity Severity { get; private set; }
+
+    /// <summary>Gets the live rate line, e.g. "Losing 11.2 GB/min · full in ~6 min" or "Steady".</summary>
+    [ObservableProperty]
+    public partial string RateLine { get; private set; } = StatusText.Unknown;
 
     /// <summary>Gets the drop-rate override (GB/min).</summary>
     public NumberField DropRate { get; } = new(InputUnit.GigabytesPerMinute, true, culture);
@@ -70,6 +82,8 @@ public sealed partial class DriveRow(string letter, IFormatProvider culture) : O
     /// <summary>Gets every override field.</summary>
     public IReadOnlyList<NumberField> Fields => [DropRate, TimeToFull, NoiseFloor, FloorBytes, FloorPercent, ProcessWrite];
 
+    private IReadOnlyList<bool?> Toggles => [DropRateEnabled, TimeToFullEnabled, FloorEnabled, ProcessWriteEnabled];
+
     /// <summary>Shows a drive's overrides.</summary>
     /// <param name="overrides">The overrides; blank fields stay blank.</param>
     public void Load(Thresholds overrides)
@@ -85,6 +99,7 @@ public sealed partial class DriveRow(string letter, IFormatProvider culture) : O
         TimeToFullEnabled = overrides.TimeToFullEnabled;
         FloorEnabled = overrides.FloorEnabled;
         ProcessWriteEnabled = overrides.ProcessWriteEnabled;
+        ThresholdsExpanded = Fields.Any(f => !f.IsBlank) || Toggles.Any(t => t is not null);
     }
 
     /// <summary>Builds the drive's configuration from the row; call only when no field has an error.</summary>
@@ -110,19 +125,24 @@ public sealed partial class DriveRow(string letter, IFormatProvider culture) : O
 
     /// <summary>Shows a drive's live status.</summary>
     /// <param name="status">The status, or null when the service reports nothing for the drive.</param>
-    /// <param name="noiseFloorBytesPerMinute">The drive's noise floor.</param>
-    public void ApplyStatus(DriveStatus? status, long noiseFloorBytesPerMinute)
+    /// <param name="thresholds">The drive's saved thresholds, for the noise floor and the bar's severity.</param>
+    public void ApplyStatus(DriveStatus? status, ResolvedThresholds thresholds)
     {
+        ArgumentNullException.ThrowIfNull(thresholds);
         if (status is null)
         {
-            Free = StatusText.Unknown;
-            Rate = StatusText.Unknown;
-            Eta = StatusText.Unknown;
+            FreeText = StatusText.Unknown;
+            UsedFraction = 0;
+            Severity = DriveSeverity.Healthy;
+            RateLine = StatusText.Unknown;
             return;
         }
 
-        Free = status.Available ? ByteFormat.Format(status.FreeBytes) : "not available";
-        Rate = StatusText.RateColumn(status.DropRateBytesPerSecond, noiseFloorBytesPerMinute);
-        Eta = StatusText.EtaColumn(status, noiseFloorBytesPerMinute);
+        long noiseFloor = thresholds.NoiseFloorBytesPerMinute;
+        bool measured = status.Available && status.TotalBytes > 0;
+        FreeText = status.Available ? $"{ByteFormat.Format(status.FreeBytes)} free of {ByteFormat.Format(status.TotalBytes)}" : "Not available";
+        UsedFraction = measured ? 1 - ((double)status.FreeBytes / status.TotalBytes) : 0;
+        Severity = DriveSeverityRules.For(status, thresholds, hasUnacknowledgedAlert: false);
+        RateLine = StatusText.RateLine(status, noiseFloor);
     }
 }

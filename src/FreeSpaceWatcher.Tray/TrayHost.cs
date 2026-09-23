@@ -35,6 +35,7 @@ public sealed class TrayHost : ITrayShell, IDisposable
     private SettingsWindow? _settingsWindow;
     private StatusWindow? _statusWindow;
     private TrayWindow? _pendingOpen;
+    private bool _pendingSelectLatest;
     private DispatcherTimer? _pendingOpenTimer;
 
     /// <summary>Initializes the host; nothing is shown or connected until <see cref="Start"/>.</summary>
@@ -56,9 +57,11 @@ public sealed class TrayHost : ITrayShell, IDisposable
     /// <param name="open">
     /// A window to open once the service connects, or after 5 s without a connection so a stopped service still shows; null for none.
     /// </param>
-    public void Start(TrayWindow? open)
+    /// <param name="selectLatest">Whether the alerts window opened for <paramref name="open"/> selects the newest alert.</param>
+    public void Start(TrayWindow? open, bool selectLatest)
     {
         _pendingOpen = open;
+        _pendingSelectLatest = selectLatest;
         if (open is not null)
         {
             _pendingOpenTimer = new DispatcherTimer(OpenWithoutServiceAfter, DispatcherPriority.Normal, (_, _) => OpenPending(), _dispatcher);
@@ -80,7 +83,7 @@ public sealed class TrayHost : ITrayShell, IDisposable
     {
         if (_alertsWindow?.DataContext is not AlertsViewModel viewModel)
         {
-            viewModel = new AlertsViewModel(_client, _dialogs, _shellActions, _log);
+            viewModel = new AlertsViewModel(_client, _dialogs, _shellActions, _log, TimeProvider.System);
             _alertsWindow = new AlertsWindow { DataContext = viewModel };
             _alertsWindow.Closed += (_, _) => _alertsWindow = null;
             _alertsWindow.Show();
@@ -239,9 +242,18 @@ public sealed class TrayHost : ITrayShell, IDisposable
     {
         _pendingOpenTimer?.Stop();
         _pendingOpenTimer = null;
-        if (_pendingOpen is TrayWindow window)
+        if (_pendingOpen is not TrayWindow window)
         {
-            _pendingOpen = null;
+            return;
+        }
+
+        _pendingOpen = null;
+        if (window == TrayWindow.Alerts && _pendingSelectLatest)
+        {
+            Post(async () => (await ShowAlertsAsync(null)).SelectLatest());
+        }
+        else
+        {
             Open(window);
         }
     }

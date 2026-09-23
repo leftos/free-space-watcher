@@ -152,10 +152,74 @@ public sealed class AlertsViewModelTests
         Assert.Null(viewModel.Details);
     }
 
+    [Fact]
+    public async Task IsEmpty_FollowsTheHistory()
+    {
+        AlertsViewModel viewModel = await LoadAsync();
+        Assert.True(viewModel.IsEmpty);
+        List<string?> changed = [];
+        viewModel.PropertyChanged += (_, e) => changed.Add(e.PropertyName);
+
+        _channel.Alerts = [Summary("a", 0, false)];
+        await viewModel.SelectAlertAsync(null);
+
+        Assert.False(viewModel.IsEmpty);
+        Assert.Contains(nameof(AlertsViewModel.IsEmpty), changed);
+    }
+
+    [Fact]
+    public async Task Rows_RelativeTimeCountsFromTheClock()
+    {
+        AlertsViewModel viewModel = await LoadAsync(Summary("a", 0, false), Summary("b", 1, false));
+
+        Assert.Equal(["8 min ago", "9 min ago"], viewModel.Alerts.Select(a => a.RelativeTime));
+    }
+
+    [Fact]
+    public async Task SelectLatest_SelectsTheNewestAlone_AndShowsItsDetails()
+    {
+        AlertsViewModel viewModel = await LoadAsync(Summary("old", 0, false), Summary("new", 5, false));
+        viewModel.Alerts.Single(a => a.Summary.Id == "old").IsSelected = true;
+
+        viewModel.SelectLatest();
+
+        string[] expected = ["new"];
+        Assert.Equal(expected, viewModel.SelectedAlerts.Select(a => a.Summary.Id));
+        Assert.Equal("new", viewModel.SelectedAlert?.Summary.Id);
+        Assert.Equal("new", viewModel.Details?.Id);
+    }
+
+    [Fact]
+    public async Task SelectLatest_EmptyList_DoesNothing()
+    {
+        AlertsViewModel viewModel = await LoadAsync();
+
+        viewModel.SelectLatest();
+
+        Assert.Null(viewModel.SelectedAlert);
+        Assert.Null(viewModel.Details);
+    }
+
+    [Fact]
+    public async Task DismissActionStatus_ClearsTheStrip()
+    {
+        AlertsViewModel viewModel = await LoadAsync(Summary("a", 0, false));
+        viewModel.Alerts[0].IsSelected = true;
+        _dialogs.Answer = false;
+        await viewModel.OfferElevationAsync(ProcessAction.Kill, 41372, null, "pwsh");
+        Assert.NotNull(viewModel.ActionStatus);
+        Assert.True(viewModel.ActionFailed);
+
+        viewModel.DismissActionStatusCommand.Execute(null);
+
+        Assert.Null(viewModel.ActionStatus);
+        Assert.False(viewModel.ActionFailed);
+    }
+
     private async Task<AlertsViewModel> LoadAsync(params AlertSummary[] alerts)
     {
         _channel.Alerts = alerts;
-        AlertsViewModel viewModel = new(_channel, _dialogs, new FakeShell(), new FakeTrayLog());
+        AlertsViewModel viewModel = new(_channel, _dialogs, new FakeShell(), new FakeTrayLog(), new FixedClock(T0.AddMinutes(9)));
         await viewModel.SelectAlertAsync(null);
         return viewModel;
     }
@@ -226,6 +290,13 @@ public sealed class AlertsViewModelTests
         }
 
         public void ShowError(string title, string message) => throw new InvalidOperationException($"Unexpected error: {message}");
+    }
+
+    private sealed class FixedClock(DateTimeOffset now) : TimeProvider
+    {
+        public override TimeZoneInfo LocalTimeZone => TimeZoneInfo.Utc;
+
+        public override DateTimeOffset GetUtcNow() => now;
     }
 
     private sealed class FakeShell : IShellActions

@@ -5,17 +5,18 @@ Captures the tray's windows to PNG files, in each theme, for review.
 
 .DESCRIPTION
 For each theme and window, starts the tray from the build output (src/FreeSpaceWatcher.Tray/bin/Debug) with --theme and
---open, waits up to 10 s for the window, holds it open for -HoldSeconds, captures it with PrintWindow into <Out>/<window>-<theme>.png, and closes that tray.
+--open (and --select-latest for the alerts window, so its details show the newest alert), waits up to 10 s for the window, holds
+it open for -HoldSeconds, captures it with PrintWindow into <Out>/<window>-<theme>.png, and closes that tray.
 The tray connects to whichever service is running; the installed one is fine.
 
 A tray is single-instance per session, so any running tray is stopped first, and the installed tray is started again at the
 end (also when a capture fails), so the user's tray comes back.
 
 .PARAMETER Window
-The windows to capture: status, alerts, settings.
+The windows to capture: status, alerts, settings; a comma-separated list such as alerts,settings also works under pwsh -File.
 
 .PARAMETER Theme
-The themes to capture them in: light, dark, system.
+The themes to capture them in: light, dark, system; comma-separated lists work as for -Window.
 
 .PARAMETER Out
 The folder the PNG files go to; a relative path is taken from the repository root.
@@ -28,8 +29,8 @@ pwsh -NoProfile -File scripts/capture-ui.ps1 -Window status -Theme dark
 #>
 [CmdletBinding()]
 param(
-    [ValidateSet('status', 'alerts', 'settings')][string[]]$Window = @('status', 'alerts', 'settings'),
-    [ValidateSet('light', 'dark', 'system')][string[]]$Theme = @('light', 'dark'),
+    [string[]]$Window = @('status', 'alerts', 'settings'),
+    [string[]]$Theme = @('light', 'dark'),
     [string]$Out = '.tmp/ui',
     [ValidateRange(0, 600)][int]$HoldSeconds = 2
 )
@@ -42,10 +43,31 @@ $repoRoot = Split-Path -Parent $PSScriptRoot
 $installedTray = 'C:\Program Files\FreeSpaceWatcher\FreeSpaceWatcher.Tray.exe'
 $windowTitles = @{
     status = 'Free Space Watcher'
-    alerts = 'FreeSpaceWatcher alerts'
-    settings = 'FreeSpaceWatcher settings'
+    alerts = 'Alerts'
+    settings = 'Settings'
 }
 $windowTimeout = [TimeSpan]::FromSeconds(10)
+
+# pwsh -File passes "alerts,settings" as one string, so comma-separated names are split here rather than by the parser.
+function Split-NameList {
+    param(
+        [Parameter(Mandatory)][string[]]$Value,
+        [Parameter(Mandatory)][string[]]$Allowed,
+        [Parameter(Mandatory)][string]$Parameter
+    )
+
+    $names = @($Value | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Trim().ToLowerInvariant() } | Where-Object { $_ })
+    foreach ($name in $names) {
+        if ($name -notin $Allowed) {
+            throw "-$Parameter '$name' is not one of: $($Allowed -join ', ')."
+        }
+    }
+
+    return $names
+}
+
+$Window = Split-NameList -Value $Window -Allowed @('status', 'alerts', 'settings') -Parameter 'Window'
+$Theme = Split-NameList -Value $Theme -Allowed @('light', 'dark', 'system') -Parameter 'Theme'
 
 $drawingReferences = @(
     [System.Drawing.Bitmap].Assembly.Location
@@ -231,6 +253,9 @@ try {
     foreach ($themeName in $Theme) {
         foreach ($windowName in $Window) {
             $arguments = @('--theme', $themeName, '--open', $windowName)
+            if ($windowName -eq 'alerts') {
+                $arguments += '--select-latest'
+            }
             $tray = Start-Process -FilePath $trayExe.FullName -ArgumentList $arguments -PassThru
             try {
                 $handle = Wait-TrayWindow -Tray $tray -Title $windowTitles[$windowName]

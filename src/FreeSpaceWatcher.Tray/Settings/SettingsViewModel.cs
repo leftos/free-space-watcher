@@ -231,7 +231,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         };
     }
 
-    /// <summary>Shows live status in the drive grid.</summary>
+    /// <summary>Shows live status on the drive cards.</summary>
     /// <param name="status">The latest status.</param>
     public void ApplyStatus(StatusResponse status)
     {
@@ -239,7 +239,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         foreach (DriveRow row in Drives)
         {
             DriveStatus? drive = status.Drives.FirstOrDefault(d => string.Equals(d.Letter, row.Letter, StringComparison.OrdinalIgnoreCase));
-            row.ApplyStatus(drive, StatusText.NoiseFloor(_loaded, row.Letter));
+            row.ApplyStatus(drive, _loaded?.For(row.Letter) ?? ResolvedThresholds.Default);
         }
     }
 

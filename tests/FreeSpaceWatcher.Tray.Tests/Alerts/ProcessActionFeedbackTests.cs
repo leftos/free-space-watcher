@@ -60,33 +60,35 @@ public sealed class ProcessActionFeedbackTests
     }
 
     [Theory]
-    [InlineData(null, true, false, "")]
-    [InlineData(ProcessState.Running, true, false, "")]
-    [InlineData(ProcessState.Suspended, false, true, " · Suspended")]
-    [InlineData(ProcessState.Exited, false, false, " · Exited")]
-    public void ProcessNode_ButtonsAndSuffix_FollowTheState(ProcessState? state, bool canSuspend, bool canResume, string suffix)
+    [InlineData(null, true, false, true, null)]
+    [InlineData(ProcessState.Running, true, false, true, null)]
+    [InlineData(ProcessState.Suspended, false, true, true, "Suspended")]
+    [InlineData(ProcessState.Exited, false, false, false, "Exited")]
+    public void ProcessNode_ButtonsAndStatePill_FollowTheState(ProcessState? state, bool canSuspend, bool canResume, bool canKill, string? pill)
     {
-        var node = ProcessNode.From(Report());
+        var node = ProcessNode.From(Report(), Report().BytesWritten, isTopWriter: true);
 
         node.State = state;
 
         Assert.Equal(canSuspend, node.CanSuspend);
         Assert.Equal(canResume, node.CanResume);
-        Assert.EndsWith("0 deleted" + suffix, node.Title, StringComparison.Ordinal);
+        Assert.Equal(canKill, node.CanKill);
+        Assert.Equal(pill, node.StateText);
     }
 
     [Fact]
-    public void ProcessNode_StateChange_NotifiesTitleAndButtons()
+    public void ProcessNode_StateChange_NotifiesStatePillAndButtons()
     {
-        var node = ProcessNode.From(Report());
+        var node = ProcessNode.From(Report(), Report().BytesWritten, isTopWriter: true);
         List<string?> changed = [];
         node.PropertyChanged += (_, e) => changed.Add(e.PropertyName);
 
         node.State = ProcessState.Suspended;
 
-        Assert.Contains(nameof(ProcessNode.Title), changed);
+        Assert.Contains(nameof(ProcessNode.StateText), changed);
         Assert.Contains(nameof(ProcessNode.CanSuspend), changed);
         Assert.Contains(nameof(ProcessNode.CanResume), changed);
+        Assert.Contains(nameof(ProcessNode.CanKill), changed);
     }
 
     private static ProcessWriteReport Report() =>

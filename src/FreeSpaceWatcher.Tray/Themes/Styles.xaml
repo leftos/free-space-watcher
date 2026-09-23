@@ -22,6 +22,31 @@
     <Setter Property="FontSize" Value="12" />
     <Setter Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}" />
   </Style>
+  <!-- Errors: body or caption size in the critical colour. -->
+  <Style x:Key="CriticalText" TargetType="TextBlock" BasedOn="{StaticResource BodyText}">
+    <Setter Property="Foreground" Value="{DynamicResource SystemFillColorCriticalBrush}" />
+  </Style>
+  <Style x:Key="CriticalCaptionText" TargetType="TextBlock" BasedOn="{StaticResource CaptionText}">
+    <Setter Property="Foreground" Value="{DynamicResource SystemFillColorCriticalBrush}" />
+  </Style>
+  <!-- A Segoe Fluent Icons glyph shown as text, e.g. an info strip's icon. -->
+  <Style x:Key="GlyphText" TargetType="TextBlock">
+    <Setter Property="FontFamily" Value="Segoe Fluent Icons, Segoe MDL2 Assets" />
+    <Setter Property="FontSize" Value="16" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+  </Style>
+
+  <!-- An info strip: a message on a severity background above the content it is about; caution unless a variant says otherwise. -->
+  <Style x:Key="InfoStrip" TargetType="Border">
+    <Setter Property="CornerRadius" Value="4" />
+    <Setter Property="Padding" Value="12,8" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="Background" Value="{DynamicResource SystemFillColorCautionBackgroundBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource CardStrokeColorDefaultBrush}" />
+  </Style>
+  <Style x:Key="CriticalInfoStrip" TargetType="Border" BasedOn="{StaticResource InfoStrip}">
+    <Setter Property="Background" Value="{DynamicResource SystemFillColorCriticalBackgroundBrush}" />
+  </Style>
 
   <!-- A card: corner radius 8, the card background and stroke, 16 padding. -->
   <Style x:Key="Card" TargetType="Border">
@@ -48,6 +73,10 @@
     <Setter Property="BorderBrush" Value="{DynamicResource AccentFillColorDefaultBrush}" />
     <Setter Property="TextElement.Foreground" Value="{DynamicResource TextOnAccentFillColorPrimaryBrush}" />
   </Style>
+  <Style x:Key="CautionPill" TargetType="Border" BasedOn="{StaticResource Pill}">
+    <Setter Property="Background" Value="{DynamicResource SystemFillColorCautionBackgroundBrush}" />
+    <Setter Property="TextElement.Foreground" Value="{DynamicResource SystemFillColorCautionBrush}" />
+  </Style>
 
   <!--
     A Fluent button showing a Segoe Fluent Icons glyph: set controls:IconButton.Glyph and AutomationProperties.Name;
@@ -59,5 +88,17 @@
     <Setter Property="Padding" Value="8" />
     <Setter Property="Content" Value="{Binding Path=(controls:IconButton.Glyph), RelativeSource={RelativeSource Self}}" />
     <Setter Property="ToolTip" Value="{Binding Path=(AutomationProperties.Name), RelativeSource={RelativeSource Self}}" />
+  </Style>
+  <!-- A smaller icon button for rows and info strips. -->
+  <Style x:Key="SmallIconButton" TargetType="Button" BasedOn="{StaticResource IconButton}">
+    <Setter Property="FontSize" Value="12" />
+    <Setter Property="Padding" Value="6" />
+  </Style>
+  <!-- Destructive actions (Kill, Clear all): the critical colour on the button's text or glyph. -->
+  <Style x:Key="CriticalButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+    <Setter Property="Foreground" Value="{DynamicResource SystemFillColorCriticalBrush}" />
+  </Style>
+  <Style x:Key="CriticalIconButton" TargetType="Button" BasedOn="{StaticResource IconButton}">
+    <Setter Property="Foreground" Value="{DynamicResource SystemFillColorCriticalBrush}" />
   </Style>
 </ResourceDictionary>

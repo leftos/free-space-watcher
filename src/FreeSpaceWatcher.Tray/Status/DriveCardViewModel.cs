@@ -92,8 +92,10 @@ public sealed partial class DriveCardViewModel(string letter) : ObservableObject
     public void MergeHistory(IReadOnlyList<DriveSample> loaded, DateTimeOffset now) =>
         History = SampleHistory.Merge(loaded, History, now, SampleHistory.Span);
 
-    // The label is decoration: a drive that is not ready, or that the user may not query, simply shows none.
-    private static string ReadVolumeLabel(string letter)
+    /// <summary>Reads a drive's volume label; the label is decoration, so a drive that is not ready or cannot be queried has none.</summary>
+    /// <param name="letter">The drive letter, e.g. "C".</param>
+    /// <returns>The label, or an empty string.</returns>
+    internal static string ReadVolumeLabel(string letter)
     {
         try
         {

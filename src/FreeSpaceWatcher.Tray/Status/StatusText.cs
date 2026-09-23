@@ -85,37 +85,6 @@ public static class StatusText
         return eta.TotalMinutes < 120 ? Invariant($"~{Math.Round(eta.TotalMinutes):0} min") : Invariant($"~{Math.Round(eta.TotalHours):0} h");
     }
 
-    /// <summary>Formats the settings grid's rate column: "losing …", "gaining …", "steady", or unknown.</summary>
-    /// <param name="bytesPerSecond">The drop rate in bytes per second (positive = losing space), if known.</param>
-    /// <param name="noiseFloorBytesPerMinute">The rate either way within which the drive counts as steady.</param>
-    /// <returns>The column text.</returns>
-    public static string RateColumn(double? bytesPerSecond, long noiseFloorBytesPerMinute)
-    {
-        if (bytesPerSecond is not double rate)
-        {
-            return Unknown;
-        }
-
-        if (IsLosing(rate, noiseFloorBytesPerMinute))
-        {
-            return $"losing {FormatRate(rate)}";
-        }
-
-        return IsLosing(-rate, noiseFloorBytesPerMinute) ? $"gaining {FormatRate(-rate)}" : "steady";
-    }
-
-    /// <summary>Formats the settings grid's ETA column: the estimate while losing faster than the noise floor, else unknown.</summary>
-    /// <param name="drive">The drive's status.</param>
-    /// <param name="noiseFloorBytesPerMinute">The drive's noise floor.</param>
-    /// <returns>The column text.</returns>
-    public static string EtaColumn(DriveStatus drive, long noiseFloorBytesPerMinute)
-    {
-        ArgumentNullException.ThrowIfNull(drive);
-        return drive.DropRateBytesPerSecond is double rate && IsLosing(rate, noiseFloorBytesPerMinute) && drive.TimeToFull is TimeSpan eta
-            ? FormatEta(eta)
-            : Unknown;
-    }
-
     private static string FitTooltip(string text) =>
         text.Length <= MaxTooltipLength ? text : string.Concat(text.AsSpan(0, MaxTooltipLength - 1), "…");
 
