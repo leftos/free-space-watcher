@@ -18,4 +18,7 @@ Free Space Watcher is a Windows service plus tray app that warns when a drive's 
 - **Re-arm** — the point at which a fired trigger may fire again: the cooldown has passed, or for the floor, free space has climbed back above floor plus a margin.
 - **Escalation** — a worse condition on an already-fired trigger (time to full halves, a new top writer appears) that bypasses the cooldown.
 - **Cooldown** — the minimum time between two alerts of the same trigger on the same drive.
+- **Fast-I/O retry** — the second ETW Write event Windows logs for one `WriteFile` when a filter driver refuses the fast path and the write is re-issued as an IRP; the collector drops it so the write counts once.
+- **Valid data length** — how far into a file data has actually been written to disk; the lazy writer advances it after each flush, and `System`'s end-of-file events report it, which is why they are not used for growth.
+- **Paging I/O** — writes the cache manager or mapped-page writer issues to flush data an app already wrote (`IRP_PAGING_IO`); dropped so cached writes are not counted twice.
 - **Elevate helper** — `FreeSpaceWatcher.Elevate.exe`, run through a UAC prompt only to suspend, resume or kill a process the user's own token cannot touch.

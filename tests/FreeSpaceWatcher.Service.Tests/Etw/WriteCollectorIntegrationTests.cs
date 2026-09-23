@@ -15,7 +15,6 @@ public sealed class WriteCollectorIntegrationTests
     private const int ChunkBytes = 1 << 20;
     private const int ChunkCount = 200;
     private const long FileBytes = (long)ChunkBytes * ChunkCount;
-    private const long MinExtendBytes = 150L * ChunkBytes;
     private static readonly TimeSpan Deadline = TimeSpan.FromSeconds(10);
 
     [Fact]
@@ -45,14 +44,11 @@ public sealed class WriteCollectorIntegrationTests
             await WriteFileAsync(file, ct);
 
             FileWrite? written = null;
-            await WaitUntilAsync(
-                () => (written = FindOwnWrite(aggregators, file)) is { BytesWritten: >= FileBytes, ExtendBytes: >= MinExtendBytes },
-                ct
-            );
+            await WaitUntilAsync(() => (written = FindOwnWrite(aggregators, file)) is { BytesWritten: >= FileBytes, ExtendBytes: >= FileBytes }, ct);
 
             Assert.NotNull(written);
-            Assert.True(written.BytesWritten >= (long)ChunkBytes * ChunkCount, $"{written.BytesWritten} bytes attributed to {file}");
-            Assert.True(written.ExtendBytes >= MinExtendBytes, $"{written.ExtendBytes} bytes of growth credited to {file}");
+            Assert.Equal(FileBytes, written.BytesWritten);
+            Assert.Equal(FileBytes, written.ExtendBytes);
             IEnumerable<FileWrite> systemWrites = Snapshot(aggregators, file)
                 .Processes.Where(p => string.Equals(p.Name, "System", StringComparison.OrdinalIgnoreCase))
                 .SelectMany(p => p.Files)

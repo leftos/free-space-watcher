@@ -110,5 +110,14 @@ Executed through the `plan-execution` skill with the `implementer` agent:
 ## Known limits (documented in README)
 
 - Bytes *written* ≠ space *consumed*: overwrites and deleted temp files inflate writes; the details show created/deleted and current size to compensate.
-- Paging-I/O writes (lazy-writer cache flushes and mapped-page-writer flushes, `IRP_PAGING_IO` set in the FileIo event's IoFlags) are dropped so cached writes are not counted twice, once for the app and once for `System`. A program that writes only through memory-mapped views shows up through its end-of-file growth, or, if it never grows the file, only in the "unattributed" figure.
+- Paging-I/O writes (lazy-writer cache flushes and mapped-page-writer flushes, `IRP_PAGING_IO` set in the FileIo event's IoFlags) are dropped so cached writes are not counted twice, once for the app and once for `System`. A program that writes only through memory-mapped views shows up through an explicit end-of-file change of its own, or, if it never makes one, only in the "unattributed" figure.
 - Any interactive user can change which drives are watched (single-user machine assumption).
+
+## ETW file-event findings (measured 2026-09-23, Windows 11 26200)
+
+Measured with a raw capture of a cached, sequential 2 GiB writer, using the same kernel keywords as `WriteCollector` and losing no events.
+
+- A `WriteFile` whose fast-I/O attempt a filter driver refuses (`STATUS_FLT_DISALLOW_FASTIO`, `0xC01C0004`; seen wherever the write extended the file's allocation) is logged as two Write events: IoFlags `0x0` for the attempt, then the IRP's flags (`0x60A00`) for the retry, on the same thread, FileObject, offset and size, within 0.3 ms. IrpPtr is not always equal. The collector drops the retry.
+- A cached writer produces no EndOfFile (class 20) SetInfo event of its own: NTFS grows EOF inside the write path. The class-20 events that do arrive come from `System` and carry the valid data length after each lazy-writer flush, not the file size. Growth is therefore derived from the writer's own write extents, and `System`'s class-20 events are ignored.
+- `FileObject` and `FileKey` addresses are reused by other files within milliseconds of a close. Match file events by resolved name, never by a remembered address.
+- `FileInfo.Length` is exact for a file another process is still writing (zero lag in 17 samples), so an alert's `CurrentSize` is trustworthy ground truth.

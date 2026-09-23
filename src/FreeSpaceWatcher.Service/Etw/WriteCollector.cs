@@ -158,14 +158,17 @@ public sealed partial class WriteCollector(
         {
             while (await timer.WaitForNextTickAsync(stoppingToken).ConfigureAwait(false))
             {
-                LogCounters(logger, _router.UnmappedEvents, _router.PagingWritesDropped, _router.ExtendsWithoutBase);
+                LogRouterCounters();
             }
         }
         catch (OperationCanceledException)
         {
-            LogCounters(logger, _router.UnmappedEvents, _router.PagingWritesDropped, _router.ExtendsWithoutBase);
+            LogRouterCounters();
         }
     }
+
+    private void LogRouterCounters() =>
+        LogCounters(logger, _router.UnmappedEvents, _router.PagingWritesDropped, _router.FastIoRetriesDropped, _router.ExtendsWithoutBase);
 
     [LoggerMessage(
         EventId = 1200,
@@ -191,7 +194,8 @@ public sealed partial class WriteCollector(
         Level = LogLevel.Debug,
         Message = "File events dropped for paths without a drive letter: {Unmapped}; "
             + "paging-I/O writes dropped (cache and mapped-page flushes): {PagingWrites}; "
+            + "fast-I/O retries dropped (IRP repeats of a write already counted): {FastIoRetries}; "
             + "end-of-file growths recorded as 0 (earlier size unknown): {ExtendsWithoutBase}"
     )]
-    private static partial void LogCounters(ILogger logger, long unmapped, long pagingWrites, long extendsWithoutBase);
+    private static partial void LogCounters(ILogger logger, long unmapped, long pagingWrites, long fastIoRetries, long extendsWithoutBase);
 }

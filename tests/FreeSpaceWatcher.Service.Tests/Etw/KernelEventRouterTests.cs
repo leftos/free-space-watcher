@@ -1,4 +1,8 @@
+using FreeSpaceWatcher.Core.Writes;
+using FreeSpaceWatcher.Service.Config;
 using FreeSpaceWatcher.Service.Etw;
+using FreeSpaceWatcher.Service.Writes;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace FreeSpaceWatcher.Service.Tests.Etw;
 
@@ -24,4 +28,28 @@ public sealed class KernelEventRouterTests
     [InlineData(IrpWriteOperation | IrpBufferedIo | IrpSynchronousApi)]
     [InlineData(IrpNoCache | IrpWriteOperation)]
     public void IsPagingIo_CallerWrite_IsKept(int ioFlags) => Assert.False(KernelEventRouter.IsPagingIo(ioFlags));
+
+    [Fact]
+    public void SetEndOfFile_FromSystem_DoesNotChangeWritersExtendBytes()
+    {
+        const int Writer = 1234;
+        const int SystemPid = 4;
+        const long Chunk = 1 << 20;
+        const string FilePath = @"C:\data\growing.bin";
+        using TempDirectory temp = new();
+        ConfigService config = new(new ServicePaths(temp.Path), NullLogger<ConfigService>.Instance);
+        WriteAggregatorProvider aggregators = new(config);
+        KernelEventRouter router = new(aggregators, new DevicePathMapper(_ => null, TimeProvider.System), ownProcessId: 1);
+        DateTime now = DateTime.Now;
+
+        router.SetEndOfFile(Writer, now, @"\??\" + FilePath, Chunk);
+        router.SetEndOfFile(Writer, now, @"\??\" + FilePath, 2 * Chunk);
+        router.SetEndOfFile(SystemPid, now, @"\??\" + FilePath, 8 * Chunk);
+        router.SetEndOfFile(Writer, now, @"\??\" + FilePath, 3 * Chunk);
+
+        DriveWriteSnapshot snapshot = aggregators.Current.Snapshot('C', DateTimeOffset.Now, topProcesses: 1000, topFolders: 10, topFiles: 1000);
+        ProcessWriteReport writer = Assert.Single(snapshot.Processes, p => p.ProcessId == Writer);
+        Assert.Equal(2 * Chunk, writer.ExtendBytes);
+        Assert.DoesNotContain(snapshot.Processes, p => p.ProcessId == SystemPid);
+    }
 }

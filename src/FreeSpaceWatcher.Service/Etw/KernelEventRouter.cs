@@ -8,11 +8,23 @@ namespace FreeSpaceWatcher.Service.Etw;
 
 /// <summary>Turns kernel file and process events into write-aggregator records; runs on the TraceEvent thread only.</summary>
 /// <remarks>
+/// <para>
 /// A create counts as <see cref="WriteKind.Create"/> when its disposition always yields a new or emptied file (create-new,
-/// supersede, create-always). An end-of-file set (information class 20) carries the new size, not the growth, so the growth
-/// is the new size minus the last size this router saw for the path (0 after such a create or a truncating open); when no
-/// earlier size is known the growth is recorded as 0 and counted in <see cref="ExtendsWithoutBase"/>. A growth raised by System
-/// (the cache manager) is credited to the path's last caller-writer through <see cref="ExtendAttributor"/>.
+/// supersede, create-always). Paging-I/O writes (lazy-writer and mapped-page flushes) are dropped: they re-send data a caller
+/// already wrote. When the fast-I/O path of a cached write is refused, the kernel logs the attempt (IoFlags 0) and then its
+/// IRP retry on the same thread, file object, offset and size; <see cref="FastIoRetryFilter"/> drops the retry so the write
+/// counts once.
+/// </para>
+/// <para>
+/// NTFS grows a cached file's end inside the write path, without a SetInformation request, so a file's growth is measured
+/// from its writers' own extents: the part of a write that ends past the file's known end is recorded as
+/// <see cref="WriteKind.Extend"/> for the writer (<see cref="FileEndTracker"/>). The end-of-file sets (information class 20)
+/// that System raises carry the valid data length after each lazy-writer flush, not the file's size, and are ignored. An
+/// end-of-file set from any other process (SetEndOfFile, SetLength, mapped-file growth) records its growth over the known end
+/// to that process and moves the known end to the new size, so writes after a truncation count as growth again. The known
+/// end is 0 after a creating or truncating open; when it is unknown, the first growth is recorded as 0 and counted in
+/// <see cref="ExtendsWithoutBase"/>.
+/// </para>
 /// </remarks>
 /// <param name="aggregators">Supplies the aggregator in use; when it is replaced, the live processes are replayed into the new one.</param>
 /// <param name="mapper">Maps the kernel's NT paths to DOS paths.</param>
@@ -21,26 +33,31 @@ internal sealed class KernelEventRouter(WriteAggregatorProvider aggregators, Dev
 {
     private const int FileEndOfFileInformation = 20;
 
+    // The System process, whose end-of-file sets report the lazy writer's valid data length rather than the file's size.
+    private const int SystemProcessId = 4;
+
     // IRP_PAGING_IO in wdm.h: set on lazy-writer and mapped-page-writer flushes, which re-send data already counted or
     // run on System threads; mapped-file writers stay visible through their end-of-file growth.
     private const int IrpPagingIo = 0x0002;
-    private const int MaxTrackedSizes = 100_000;
-    private readonly Dictionary<string, long> _endOfFile = new(StringComparer.OrdinalIgnoreCase);
+    private readonly FileEndTracker _fileEnds = new(FileEndTracker.DefaultCapacity);
+    private readonly FastIoRetryFilter _fastIoRetries = new();
     private readonly Dictionary<int, LiveProcess> _live = [];
-    private readonly ExtendAttributor _lastWriters = new(ExtendAttributor.DefaultCapacity);
     private WriteAggregator? _aggregator;
     private long _unmapped;
-    private long _extendsWithoutBase;
     private long _pagingWrites;
+    private long _fastIoRetriesDropped;
 
     /// <summary>Gets how many file events were dropped because their path has no drive letter.</summary>
     public long UnmappedEvents => Interlocked.Read(ref _unmapped);
 
     /// <summary>Gets how many end-of-file growths were recorded as 0 because the file's earlier size was unknown.</summary>
-    public long ExtendsWithoutBase => Interlocked.Read(ref _extendsWithoutBase);
+    public long ExtendsWithoutBase => _fileEnds.GrowthsWithoutBase;
 
     /// <summary>Gets how many paging-I/O write events (cache and mapped-page flushes) were dropped.</summary>
     public long PagingWritesDropped => Interlocked.Read(ref _pagingWrites);
+
+    /// <summary>Gets how many IRP write events were dropped as retries of a fast-I/O write already counted.</summary>
+    public long FastIoRetriesDropped => Interlocked.Read(ref _fastIoRetriesDropped);
 
     /// <summary>Tells whether a write's IRP flags mark it as paging I/O (a cache or mapped-page flush) rather than a caller's write.</summary>
     /// <param name="ioFlags">The event's IoFlags (the IRP flags).</param>
@@ -95,10 +112,22 @@ internal sealed class KernelEventRouter(WriteAggregatorProvider aggregators, Dev
             return;
         }
 
-        string? path = Record(data.ProcessID, data.TimeStamp, data.FileName, WriteKind.Write, data.IoSize);
-        if (path is not null)
+        if (_fastIoRetries.IsRetry(data.ProcessID, data.ThreadID, data.FileObject, data.Offset, data.IoSize, data.IoFlags))
         {
-            _lastWriters.Wrote(data.ProcessID, path);
+            Interlocked.Increment(ref _fastIoRetriesDropped);
+            return;
+        }
+
+        string? path = Record(data.ProcessID, data.TimeStamp, data.FileName, WriteKind.Write, data.IoSize);
+        if (path is null)
+        {
+            return;
+        }
+
+        long growth = _fileEnds.Advance(path, data.Offset + data.IoSize);
+        if (growth > 0)
+        {
+            RecordMapped(data.ProcessID, data.TimeStamp, path, WriteKind.Extend, growth);
         }
     }
 
@@ -116,36 +145,35 @@ internal sealed class KernelEventRouter(WriteAggregatorProvider aggregators, Dev
             : MapFor(data.ProcessID, data.FileName);
         if (path is not null)
         {
-            TrackSize(path, 0);
+            _fileEnds.Reset(path, 0);
         }
     }
 
     private void OnSetInfo(FileIOInfoTraceData data)
     {
-        if (data.InfoClass != FileEndOfFileInformation)
+        if (data.InfoClass == FileEndOfFileInformation)
+        {
+            SetEndOfFile(data.ProcessID, data.TimeStamp, data.FileName, (long)data.ExtraInfo);
+        }
+    }
+
+    /// <summary>Records the growth an end-of-file set caused; System's sets are ignored.</summary>
+    /// <param name="processId">The process the event was raised in.</param>
+    /// <param name="time">The event's time.</param>
+    /// <param name="ntPath">The kernel's path for the file.</param>
+    /// <param name="newSize">The new end of file the event carries.</param>
+    internal void SetEndOfFile(int processId, DateTime time, string ntPath, long newSize)
+    {
+        if (processId == SystemProcessId)
         {
             return;
         }
 
-        string? path = MapFor(data.ProcessID, data.FileName);
-        if (path is null)
+        string? path = MapFor(processId, ntPath);
+        if (path is not null)
         {
-            return;
+            RecordMapped(processId, time, path, WriteKind.Extend, _fileEnds.Set(path, newSize));
         }
-
-        long newSize = (long)data.ExtraInfo;
-        long growth = 0;
-        if (_endOfFile.TryGetValue(path, out long previous))
-        {
-            growth = Math.Max(0, newSize - previous);
-        }
-        else
-        {
-            Interlocked.Increment(ref _extendsWithoutBase);
-        }
-
-        TrackSize(path, newSize);
-        RecordMapped(_lastWriters.CreditExtend(data.ProcessID, path), data.TimeStamp, path, WriteKind.Extend, growth);
     }
 
     private void OnDelete(FileIOInfoTraceData data)
@@ -153,7 +181,7 @@ internal sealed class KernelEventRouter(WriteAggregatorProvider aggregators, Dev
         string? path = Record(data.ProcessID, data.TimeStamp, data.FileName, WriteKind.Delete, 0);
         if (path is not null)
         {
-            _endOfFile.Remove(path);
+            _fileEnds.Forget(path);
         }
     }
 
@@ -170,7 +198,7 @@ internal sealed class KernelEventRouter(WriteAggregatorProvider aggregators, Dev
     private void OnProcessStop(ProcessTraceData data)
     {
         _live.Remove(data.ProcessID);
-        _lastWriters.ProcessEnded(data.ProcessID);
+        _fastIoRetries.ProcessEnded(data.ProcessID);
         CurrentAggregator().ProcessEnded(data.ProcessID, new DateTimeOffset(data.TimeStamp));
     }
 
@@ -214,16 +242,6 @@ internal sealed class KernelEventRouter(WriteAggregatorProvider aggregators, Dev
                     Bytes = bytes,
                 }
             );
-
-    private void TrackSize(string path, long size)
-    {
-        if (_endOfFile.Count >= MaxTrackedSizes && !_endOfFile.ContainsKey(path))
-        {
-            _endOfFile.Clear();
-        }
-
-        _endOfFile[path] = size;
-    }
 
     private WriteAggregator CurrentAggregator()
     {
