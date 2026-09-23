@@ -78,6 +78,36 @@ function Stop-Running {
     }
 }
 
+function Copy-ProgramFile {
+    param([Parameter(Mandatory)][string[]]$Staged)
+    # A tray can be relaunched while this runs (a toast click starts it), locking its exe, so stop and retry.
+    $attempts = 5
+    for ($attempt = 1; $attempt -le $attempts; $attempt++) {
+        Stop-Running
+        try {
+            if (Test-Path -Path (Join-Path ([WildcardPattern]::Escape($InstallDir)) 'FreeSpaceWatcher.*')) {
+                # Only a folder already holding our files is emptied, so files an older build shipped do not linger.
+                Get-ChildItem -LiteralPath $InstallDir -Force | Remove-Item -Recurse -Force
+            }
+
+            New-Item -ItemType Directory -Path $InstallDir -Force | Out-Null
+            foreach ($folder in $Staged) {
+                Copy-Item -Path (Join-Path $folder '*') -Destination $InstallDir -Recurse -Force
+            }
+
+            return
+        }
+        catch {
+            if ($attempt -eq $attempts) {
+                throw
+            }
+
+            Write-Warning "A file in $InstallDir is in use ($($_.Exception.Message)); retrying ($attempt of $attempts)."
+            Start-Sleep -Seconds 1
+        }
+    }
+}
+
 function Register-Service {
     $service = Get-Service -Name $serviceName -ErrorAction SilentlyContinue
     $binaryPath = "`"$serviceExe`""
@@ -166,16 +196,7 @@ $staged = foreach ($name in $projects) {
     Publish-Project -Name $name
 }
 
-Stop-Running
-if (Test-Path -LiteralPath (Join-Path $InstallDir 'FreeSpaceWatcher.Service.exe')) {
-    # Only a folder holding an earlier install is emptied, so files an older build shipped do not linger.
-    Get-ChildItem -LiteralPath $InstallDir -Force | Remove-Item -Recurse -Force
-}
-
-New-Item -ItemType Directory -Path $InstallDir -Force | Out-Null
-foreach ($folder in $staged) {
-    Copy-Item -Path (Join-Path $folder '*') -Destination $InstallDir -Recurse -Force
-}
+Copy-ProgramFile -Staged $staged
 
 Write-Information "Copied the programs into $InstallDir."
 Register-Service
