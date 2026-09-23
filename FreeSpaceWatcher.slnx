@@ -9,5 +9,6 @@
   <Folder Name="/tests/">
     <Project Path="tests/FreeSpaceWatcher.Core.Tests/FreeSpaceWatcher.Core.Tests.csproj" />
     <Project Path="tests/FreeSpaceWatcher.Service.Tests/FreeSpaceWatcher.Service.Tests.csproj" />
+    <Project Path="tests/FreeSpaceWatcher.Tray.Tests/FreeSpaceWatcher.Tray.Tests.csproj" />
   </Folder>
 </Solution>

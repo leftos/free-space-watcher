@@ -1,0 +1,151 @@
+<Window
+  x:Class="FreeSpaceWatcher.Tray.Alerts.AlertsWindow"
+  xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+  xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+  xmlns:local="clr-namespace:FreeSpaceWatcher.Tray.Alerts"
+  Title="FreeSpaceWatcher alerts"
+  Width="1100"
+  Height="640"
+  WindowStartupLocation="CenterScreen"
+>
+  <Window.Resources>
+    <Style x:Key="NodeButton" TargetType="Button">
+      <Setter Property="Margin" Value="4,1,0,1" />
+      <Setter Property="Padding" Value="6,0" />
+    </Style>
+    <HierarchicalDataTemplate DataType="{x:Type local:ProcessNode}" ItemsSource="{Binding Children}">
+      <StackPanel Orientation="Horizontal">
+        <TextBlock VerticalAlignment="Center" FontWeight="SemiBold" Text="{Binding Title}" />
+        <Button
+          Style="{StaticResource NodeButton}"
+          Content="Suspend"
+          Command="{Binding DataContext.SuspendCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+          CommandParameter="{Binding}"
+        />
+        <Button
+          Style="{StaticResource NodeButton}"
+          Content="Resume"
+          Command="{Binding DataContext.ResumeCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+          CommandParameter="{Binding}"
+        />
+        <Button
+          Style="{StaticResource NodeButton}"
+          Content="Kill"
+          Command="{Binding DataContext.KillCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+          CommandParameter="{Binding}"
+        />
+      </StackPanel>
+    </HierarchicalDataTemplate>
+    <HierarchicalDataTemplate DataType="{x:Type local:GroupNode}" ItemsSource="{Binding Children}">
+      <TextBlock FontStyle="Italic" Text="{Binding Title}" />
+    </HierarchicalDataTemplate>
+    <DataTemplate DataType="{x:Type local:FolderNode}">
+      <StackPanel Orientation="Horizontal">
+        <TextBlock VerticalAlignment="Center" Text="{Binding Title}" />
+        <Button
+          Style="{StaticResource NodeButton}"
+          Content="Open folder"
+          Command="{Binding DataContext.OpenFolderCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+          CommandParameter="{Binding Folder.Path}"
+        />
+      </StackPanel>
+    </DataTemplate>
+    <DataTemplate DataType="{x:Type local:FileNode}">
+      <StackPanel Orientation="Horizontal">
+        <TextBlock VerticalAlignment="Center" Text="{Binding Title}" />
+        <Button
+          Style="{StaticResource NodeButton}"
+          Content="Open folder"
+          Command="{Binding DataContext.OpenFolderCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+          CommandParameter="{Binding FolderPath}"
+        />
+        <Button
+          Style="{StaticResource NodeButton}"
+          Content="Show file"
+          Command="{Binding DataContext.ShowFileCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+          CommandParameter="{Binding}"
+        />
+      </StackPanel>
+    </DataTemplate>
+  </Window.Resources>
+
+  <DockPanel Margin="8">
+    <TextBlock DockPanel.Dock="Top" Margin="0,0,0,6" Foreground="Firebrick" TextWrapping="Wrap" Text="{Binding ErrorMessage}">
+      <TextBlock.Style>
+        <Style TargetType="TextBlock">
+          <Style.Triggers>
+            <DataTrigger Binding="{Binding ErrorMessage}" Value="{x:Null}">
+              <Setter Property="Visibility" Value="Collapsed" />
+            </DataTrigger>
+          </Style.Triggers>
+        </Style>
+      </TextBlock.Style>
+    </TextBlock>
+    <Grid>
+      <Grid.ColumnDefinitions>
+        <ColumnDefinition Width="380" />
+        <ColumnDefinition Width="6" />
+        <ColumnDefinition Width="*" />
+      </Grid.ColumnDefinitions>
+      <DockPanel Grid.Column="0">
+        <Button DockPanel.Dock="Top" Margin="0,0,0,6" HorizontalAlignment="Left" Padding="8,2" Content="Refresh" Command="{Binding RefreshCommand}" />
+        <ListBox ItemsSource="{Binding Alerts}" SelectedItem="{Binding SelectedAlert}">
+          <ListBox.ItemTemplate>
+            <DataTemplate>
+              <TextBlock Text="{Binding Display}">
+                <TextBlock.Style>
+                  <Style TargetType="TextBlock">
+                    <Style.Triggers>
+                      <DataTrigger Binding="{Binding IsUnacknowledged}" Value="True">
+                        <Setter Property="FontWeight" Value="Bold" />
+                      </DataTrigger>
+                    </Style.Triggers>
+                  </Style>
+                </TextBlock.Style>
+              </TextBlock>
+            </DataTemplate>
+          </ListBox.ItemTemplate>
+        </ListBox>
+      </DockPanel>
+      <GridSplitter Grid.Column="1" Width="6" HorizontalAlignment="Stretch" />
+      <DockPanel Grid.Column="2">
+        <Grid DockPanel.Dock="Top" Margin="0,0,0,8">
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="Auto" />
+            <ColumnDefinition Width="*" />
+          </Grid.ColumnDefinitions>
+          <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+          </Grid.RowDefinitions>
+          <TextBlock Grid.Row="0" Grid.ColumnSpan="2" FontSize="16" FontWeight="SemiBold" Text="{Binding Details.Title}" />
+          <TextBlock Grid.Row="1" Grid.Column="0" Margin="0,0,12,0" Text="Reason" />
+          <TextBlock Grid.Row="1" Grid.Column="1" TextWrapping="Wrap" Text="{Binding Details.Reason}" />
+          <TextBlock Grid.Row="2" Grid.Column="0" Margin="0,0,12,0" Text="Free" />
+          <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding Details.Free}" />
+          <TextBlock Grid.Row="3" Grid.Column="0" Margin="0,0,12,0" Text="Rate" />
+          <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding Details.Rate}" />
+          <TextBlock Grid.Row="4" Grid.Column="0" Margin="0,0,12,0" Text="Full in" />
+          <TextBlock Grid.Row="4" Grid.Column="1" Text="{Binding Details.Eta}" />
+          <TextBlock Grid.Row="5" Grid.Column="0" Margin="0,0,12,0" Text="Unattributed" />
+          <TextBlock Grid.Row="5" Grid.Column="1" Text="{Binding Details.Unattributed}" />
+          <Button
+            Grid.Row="6"
+            Grid.ColumnSpan="2"
+            Margin="0,6,0,0"
+            HorizontalAlignment="Left"
+            Padding="8,2"
+            Content="Acknowledge"
+            Command="{Binding AcknowledgeCommand}"
+          />
+        </Grid>
+        <TreeView ItemsSource="{Binding Details.Processes}" />
+      </DockPanel>
+    </Grid>
+  </DockPanel>
+</Window>

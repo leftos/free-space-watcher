@@ -1,0 +1,280 @@
+<Window
+  x:Class="FreeSpaceWatcher.Tray.Settings.SettingsWindow"
+  xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+  xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+  xmlns:local="clr-namespace:FreeSpaceWatcher.Tray.Settings"
+  Title="FreeSpaceWatcher settings"
+  Width="1280"
+  Height="720"
+  WindowStartupLocation="CenterScreen"
+>
+  <Window.Resources>
+    <DataTemplate DataType="{x:Type local:NumberField}">
+      <Grid MinWidth="70">
+        <TextBox
+          x:Name="Box"
+          VerticalContentAlignment="Center"
+          Text="{Binding Text, UpdateSourceTrigger=PropertyChanged}"
+          ToolTip="{Binding Error}"
+        />
+        <TextBlock
+          x:Name="Hint"
+          Margin="5,0,0,0"
+          VerticalAlignment="Center"
+          Foreground="Gray"
+          IsHitTestVisible="False"
+          Text="{Binding Placeholder}"
+          Visibility="Collapsed"
+        />
+      </Grid>
+      <DataTemplate.Triggers>
+        <DataTrigger Binding="{Binding IsBlank}" Value="True">
+          <Setter TargetName="Hint" Property="Visibility" Value="Visible" />
+        </DataTrigger>
+        <DataTrigger Binding="{Binding HasError}" Value="True">
+          <Setter TargetName="Box" Property="BorderBrush" Value="Firebrick" />
+          <Setter TargetName="Box" Property="Background" Value="#FFFDECEA" />
+        </DataTrigger>
+      </DataTemplate.Triggers>
+    </DataTemplate>
+    <Style x:Key="SectionTitle" TargetType="TextBlock">
+      <Setter Property="Margin" Value="0,12,0,4" />
+      <Setter Property="FontSize" Value="14" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+    </Style>
+    <Style x:Key="FieldLabel" TargetType="TextBlock">
+      <Setter Property="Width" Value="190" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+    <Style x:Key="FieldRow" TargetType="StackPanel">
+      <Setter Property="Orientation" Value="Horizontal" />
+      <Setter Property="Margin" Value="0,2" />
+    </Style>
+  </Window.Resources>
+
+  <DockPanel Margin="8">
+    <Border DockPanel.Dock="Top" Margin="0,0,0,8" Padding="6" Background="#FFFFF4CE">
+      <Border.Style>
+        <Style TargetType="Border">
+          <Setter Property="Visibility" Value="Collapsed" />
+          <Style.Triggers>
+            <DataTrigger Binding="{Binding HasLoadError}" Value="True">
+              <Setter Property="Visibility" Value="Visible" />
+            </DataTrigger>
+          </Style.Triggers>
+        </Style>
+      </Border.Style>
+      <TextBlock TextWrapping="Wrap" Text="{Binding LoadError, StringFormat='config.json could not be used, so the defaults are shown: {0}'}" />
+    </Border>
+
+    <StackPanel DockPanel.Dock="Bottom" Margin="0,8,0,0">
+      <ItemsControl ItemsSource="{Binding Errors}">
+        <ItemsControl.ItemTemplate>
+          <DataTemplate>
+            <TextBlock Foreground="Firebrick" TextWrapping="Wrap" Text="{Binding}" />
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+      <DockPanel Margin="0,6,0,0">
+        <TextBlock VerticalAlignment="Center" Foreground="Gray" Text="Not connected to the service; saving is disabled.">
+          <TextBlock.Style>
+            <Style TargetType="TextBlock">
+              <Style.Triggers>
+                <DataTrigger Binding="{Binding IsConnected}" Value="True">
+                  <Setter Property="Visibility" Value="Hidden" />
+                </DataTrigger>
+              </Style.Triggers>
+            </Style>
+          </TextBlock.Style>
+        </TextBlock>
+        <StackPanel HorizontalAlignment="Right" Orientation="Horizontal">
+          <Button Margin="0,0,6,0" Padding="16,3" Content="Save" IsDefault="True" Command="{Binding SaveCommand}" />
+          <Button Padding="16,3" Content="Close" Click="OnCloseClick" />
+        </StackPanel>
+      </DockPanel>
+    </StackPanel>
+
+    <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto">
+      <StackPanel>
+        <TextBlock Style="{StaticResource SectionTitle}" Text="Drives" />
+        <TextBlock
+          Foreground="Gray"
+          Text="Blank overrides use the defaults below; a filled-in check box turns a trigger on or off for that drive only."
+        />
+        <DataGrid
+          Margin="0,4,0,0"
+          AutoGenerateColumns="False"
+          CanUserAddRows="False"
+          CanUserDeleteRows="False"
+          HeadersVisibility="Column"
+          ItemsSource="{Binding Drives}"
+          SelectionUnit="FullRow"
+        >
+          <DataGrid.Columns>
+            <DataGridTextColumn Header="Drive" Binding="{Binding Label}" IsReadOnly="True" />
+            <DataGridTemplateColumn Header="Watch">
+              <DataGridTemplateColumn.CellTemplate>
+                <DataTemplate>
+                  <CheckBox HorizontalAlignment="Center" IsChecked="{Binding Watched, UpdateSourceTrigger=PropertyChanged}" />
+                </DataTemplate>
+              </DataGridTemplateColumn.CellTemplate>
+            </DataGridTemplateColumn>
+            <DataGridTextColumn Header="Free" Binding="{Binding Free}" IsReadOnly="True" />
+            <DataGridTextColumn Header="Rate" Binding="{Binding Rate}" IsReadOnly="True" />
+            <DataGridTextColumn Header="Full in" Binding="{Binding Eta}" IsReadOnly="True" />
+            <DataGridTemplateColumn Header="Drop rate on">
+              <DataGridTemplateColumn.CellTemplate>
+                <DataTemplate>
+                  <CheckBox
+                    HorizontalAlignment="Center"
+                    IsThreeState="True"
+                    IsChecked="{Binding DropRateEnabled, UpdateSourceTrigger=PropertyChanged}"
+                  />
+                </DataTemplate>
+              </DataGridTemplateColumn.CellTemplate>
+            </DataGridTemplateColumn>
+            <DataGridTemplateColumn Header="Drop rate (GB/min)">
+              <DataGridTemplateColumn.CellTemplate>
+                <DataTemplate>
+                  <ContentControl Content="{Binding DropRate}" />
+                </DataTemplate>
+              </DataGridTemplateColumn.CellTemplate>
+            </DataGridTemplateColumn>
+            <DataGridTemplateColumn Header="Time to full on">
+              <DataGridTemplateColumn.CellTemplate>
+                <DataTemplate>
+                  <CheckBox
+                    HorizontalAlignment="Center"
+                    IsThreeState="True"
+                    IsChecked="{Binding TimeToFullEnabled, UpdateSourceTrigger=PropertyChanged}"
+                  />
+                </DataTemplate>
+              </DataGridTemplateColumn.CellTemplate>
+            </DataGridTemplateColumn>
+            <DataGridTemplateColumn Header="Time to full (min)">
+              <DataGridTemplateColumn.CellTemplate>
+                <DataTemplate>
+                  <ContentControl Content="{Binding TimeToFull}" />
+                </DataTemplate>
+              </DataGridTemplateColumn.CellTemplate>
+            </DataGridTemplateColumn>
+            <DataGridTemplateColumn Header="Noise floor (MB/min)">
+              <DataGridTemplateColumn.CellTemplate>
+                <DataTemplate>
+                  <ContentControl Content="{Binding NoiseFloor}" />
+                </DataTemplate>
+              </DataGridTemplateColumn.CellTemplate>
+            </DataGridTemplateColumn>
+            <DataGridTemplateColumn Header="Floor on">
+              <DataGridTemplateColumn.CellTemplate>
+                <DataTemplate>
+                  <CheckBox
+                    HorizontalAlignment="Center"
+                    IsThreeState="True"
+                    IsChecked="{Binding FloorEnabled, UpdateSourceTrigger=PropertyChanged}"
+                  />
+                </DataTemplate>
+              </DataGridTemplateColumn.CellTemplate>
+            </DataGridTemplateColumn>
+            <DataGridTemplateColumn Header="Floor (GB)">
+              <DataGridTemplateColumn.CellTemplate>
+                <DataTemplate>
+                  <ContentControl Content="{Binding FloorBytes}" />
+                </DataTemplate>
+              </DataGridTemplateColumn.CellTemplate>
+            </DataGridTemplateColumn>
+            <DataGridTemplateColumn Header="Floor (%)">
+              <DataGridTemplateColumn.CellTemplate>
+                <DataTemplate>
+                  <ContentControl Content="{Binding FloorPercent}" />
+                </DataTemplate>
+              </DataGridTemplateColumn.CellTemplate>
+            </DataGridTemplateColumn>
+            <DataGridTemplateColumn Header="Process write on">
+              <DataGridTemplateColumn.CellTemplate>
+                <DataTemplate>
+                  <CheckBox
+                    HorizontalAlignment="Center"
+                    IsThreeState="True"
+                    IsChecked="{Binding ProcessWriteEnabled, UpdateSourceTrigger=PropertyChanged}"
+                  />
+                </DataTemplate>
+              </DataGridTemplateColumn.CellTemplate>
+            </DataGridTemplateColumn>
+            <DataGridTemplateColumn Header="Process write (GB)">
+              <DataGridTemplateColumn.CellTemplate>
+                <DataTemplate>
+                  <ContentControl Content="{Binding ProcessWrite}" />
+                </DataTemplate>
+              </DataGridTemplateColumn.CellTemplate>
+            </DataGridTemplateColumn>
+          </DataGrid.Columns>
+        </DataGrid>
+
+        <TextBlock Style="{StaticResource SectionTitle}" Text="Defaults" />
+        <StackPanel Style="{StaticResource FieldRow}">
+          <TextBlock Style="{StaticResource FieldLabel}" Text="Drop rate (GB/min)" />
+          <ContentControl Width="100" Content="{Binding DefaultDropRate}" />
+          <CheckBox Margin="12,0,0,0" VerticalAlignment="Center" Content="Enabled" IsChecked="{Binding DefaultDropRateEnabled}" />
+        </StackPanel>
+        <StackPanel Style="{StaticResource FieldRow}">
+          <TextBlock Style="{StaticResource FieldLabel}" Text="Time to full (min)" />
+          <ContentControl Width="100" Content="{Binding DefaultTimeToFull}" />
+          <CheckBox Margin="12,0,0,0" VerticalAlignment="Center" Content="Enabled" IsChecked="{Binding DefaultTimeToFullEnabled}" />
+        </StackPanel>
+        <StackPanel Style="{StaticResource FieldRow}">
+          <TextBlock Style="{StaticResource FieldLabel}" Text="Noise floor (MB/min)" />
+          <ContentControl Width="100" Content="{Binding DefaultNoiseFloor}" />
+        </StackPanel>
+        <StackPanel Style="{StaticResource FieldRow}">
+          <TextBlock Style="{StaticResource FieldLabel}" Text="Floor (GB)" />
+          <ContentControl Width="100" Content="{Binding DefaultFloorBytes}" />
+          <CheckBox Margin="12,0,0,0" VerticalAlignment="Center" Content="Enabled" IsChecked="{Binding DefaultFloorEnabled}" />
+        </StackPanel>
+        <StackPanel Style="{StaticResource FieldRow}">
+          <TextBlock Style="{StaticResource FieldLabel}" Text="Floor (%)" />
+          <ContentControl Width="100" Content="{Binding DefaultFloorPercent}" />
+        </StackPanel>
+        <StackPanel Style="{StaticResource FieldRow}">
+          <TextBlock Style="{StaticResource FieldLabel}" Text="Process write (GB)" />
+          <ContentControl Width="100" Content="{Binding DefaultProcessWrite}" />
+          <CheckBox Margin="12,0,0,0" VerticalAlignment="Center" Content="Enabled" IsChecked="{Binding DefaultProcessWriteEnabled}" />
+        </StackPanel>
+
+        <TextBlock Style="{StaticResource SectionTitle}" Text="Advanced" />
+        <StackPanel Style="{StaticResource FieldRow}">
+          <TextBlock Style="{StaticResource FieldLabel}" Text="Sample interval (s)" />
+          <ContentControl Width="100" Content="{Binding SampleInterval}" />
+        </StackPanel>
+        <StackPanel Style="{StaticResource FieldRow}">
+          <TextBlock Style="{StaticResource FieldLabel}" Text="Rate window (s)" />
+          <ContentControl Width="100" Content="{Binding RateWindow}" />
+        </StackPanel>
+        <StackPanel Style="{StaticResource FieldRow}">
+          <TextBlock Style="{StaticResource FieldLabel}" Text="Write window (s)" />
+          <ContentControl Width="100" Content="{Binding WriteWindow}" />
+        </StackPanel>
+        <StackPanel Style="{StaticResource FieldRow}">
+          <TextBlock Style="{StaticResource FieldLabel}" Text="Alert cooldown (min)" />
+          <ContentControl Width="100" Content="{Binding Cooldown}" />
+        </StackPanel>
+        <StackPanel Style="{StaticResource FieldRow}">
+          <TextBlock Style="{StaticResource FieldLabel}" Text="History (days)" />
+          <ContentControl Width="100" Content="{Binding HistoryDays}" />
+        </StackPanel>
+        <StackPanel Style="{StaticResource FieldRow}">
+          <TextBlock Style="{StaticResource FieldLabel}" Text="Processes per alert" />
+          <ContentControl Width="100" Content="{Binding TopProcesses}" />
+        </StackPanel>
+        <StackPanel Style="{StaticResource FieldRow}">
+          <TextBlock Style="{StaticResource FieldLabel}" Text="Folders per process" />
+          <ContentControl Width="100" Content="{Binding TopFolders}" />
+        </StackPanel>
+        <StackPanel Style="{StaticResource FieldRow}">
+          <TextBlock Style="{StaticResource FieldLabel}" Text="Files per process" />
+          <ContentControl Width="100" Content="{Binding TopFiles}" />
+        </StackPanel>
+      </StackPanel>
+    </ScrollViewer>
+  </DockPanel>
+</Window>
