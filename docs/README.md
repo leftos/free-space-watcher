@@ -9,6 +9,8 @@ Free Space Watcher is a Windows service plus tray app that warns when a drive's 
 
 - **Drop rate** — how fast a drive's free space is falling, as the least-squares slope of the free-space samples over the sample window, in bytes per second.
 - **Time to full** — free space divided by the drop rate: the estimated time until the drive reaches 0 bytes free.
+- **Noise floor** — the loss rate (default 50 MB/min) below which the time-to-full estimate is not computed, so ordinary background churn never produces an ETA.
+- **Other files in &lt;folder&gt;** — the `folder\*` entry that collects a process's writes once it has touched more distinct files in the write window than the per-process file cap.
 - **Floor** — a minimum free space (bytes or percent) below which a drive alerts regardless of rate.
 - **Write window** — the rolling period (default 5 minutes) over which the service keeps per-process, per-file write totals from ETW.
 - **Write volume trigger** — an alert raised when one process writes more than a set amount to a drive within the write window.

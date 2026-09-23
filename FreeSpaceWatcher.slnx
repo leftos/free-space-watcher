@@ -1,0 +1,12 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/FreeSpaceWatcher.Core/FreeSpaceWatcher.Core.csproj" />
+    <Project Path="src/FreeSpaceWatcher.Elevate/FreeSpaceWatcher.Elevate.csproj" />
+    <Project Path="src/FreeSpaceWatcher.Service/FreeSpaceWatcher.Service.csproj" />
+    <Project Path="src/FreeSpaceWatcher.Tray/FreeSpaceWatcher.Tray.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/FreeSpaceWatcher.Core.Tests/FreeSpaceWatcher.Core.Tests.csproj" />
+    <Project Path="tests/FreeSpaceWatcher.Service.Tests/FreeSpaceWatcher.Service.Tests.csproj" />
+  </Folder>
+</Solution>
