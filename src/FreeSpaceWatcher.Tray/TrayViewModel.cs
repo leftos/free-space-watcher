@@ -95,6 +95,16 @@ public sealed partial class TrayViewModel(IServiceChannel channel, ITrayShell sh
         : UnacknowledgedCount > 0 ? TrayState.Alert
         : TrayState.Ok;
 
+    /// <summary>Gets the used fraction, from 0 to 1, of the fullest watched drive that is available; 0 without status.</summary>
+    /// <remarks>New status raises <see cref="ToolTipText"/>'s change, which is when the icon reads this again.</remarks>
+    public double UsedFraction =>
+        _status
+            ?.Drives.Where(d => d.Watched && d.Available && d.TotalBytes > 0)
+            .Select(d => Math.Clamp((double)(d.TotalBytes - d.FreeBytes) / d.TotalBytes, 0, 1))
+            .DefaultIfEmpty(0)
+            .Max()
+        ?? 0;
+
     /// <summary>Gets the tooltip: one line per watched drive, or "Service not running".</summary>
     public string ToolTipText => StatusText.Tooltip(IsConnected, _status, _config);
 

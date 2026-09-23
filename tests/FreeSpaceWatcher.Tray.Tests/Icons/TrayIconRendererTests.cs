@@ -3,48 +3,180 @@ using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using FreeSpaceWatcher.Tray.Icons;
+using DrawingIcon = System.Drawing.Icon;
 
 namespace FreeSpaceWatcher.Tray.Tests.Icons;
 
 public sealed class TrayIconRendererTests
 {
+    private static readonly (byte R, byte G, byte B, byte A) Transparent = (0, 0, 0, 0);
+
+    public static TheoryData<int> Sizes => [.. TrayIconRenderer.Sizes];
+
+    public static TheoryData<int, TrayState> SizesAndBarStates =>
+        [.. TrayIconRenderer.Sizes.SelectMany(size => new[] { (size, TrayState.Ok), (size, TrayState.Alert) })];
+
+    public static TheoryData<int, TrayState> SizesAndStates =>
+        [.. TrayIconRenderer.Sizes.SelectMany(size => Enum.GetValues<TrayState>().Select(state => (size, state)))];
+
+    public static TheoryData<int, TaskbarTheme> SizesAndThemes =>
+        [.. TrayIconRenderer.Sizes.SelectMany(size => new[] { (size, TaskbarTheme.Dark), (size, TaskbarTheme.Light) })];
+
     [Theory]
-    [InlineData(TrayState.Ok)]
-    [InlineData(TrayState.Alert)]
-    [InlineData(TrayState.Disconnected)]
-    public void Render_DrawsA32PixelGlyphFilledWithTheStateColour(TrayState state)
+    [MemberData(nameof(Sizes))]
+    public void Render_EachSize_IsThatManyPixelsSquare(int size)
     {
-        Color expected = TrayIconRenderer.FillColor(state);
+        (int Width, int Height) dimensions = RunOnSta(() =>
+        {
+            BitmapSource bitmap = TrayIconRenderer.Render(new TrayIconKey(TrayState.Ok, 50, TaskbarTheme.Dark), size);
+            return (bitmap.PixelWidth, bitmap.PixelHeight);
+        });
 
-        RenderResult result = RunOnSta(() => Measure(state));
+        Assert.Equal((size, size), dimensions);
+    }
 
-        Assert.Equal((32, 32), (result.Width, result.Height));
-        Assert.Equal((expected.R, expected.G, expected.B, (byte)255), result.CentrePixel);
-        Assert.Equal((0, 0, 0, 0), result.CornerPixel);
-        Assert.Equal((32, 32), (result.IconWidth, result.IconHeight));
-        Assert.Equal((expected.R, expected.G, expected.B), result.IconCentre);
+    [Theory]
+    [MemberData(nameof(SizesAndBarStates))]
+    public void Render_EmptyDrive_LeavesTheBarTransparent(int size, TrayState state)
+    {
+        ((byte, byte, byte, byte) quarter, (byte, byte, byte, byte) threeQuarters) = BarColumns(state, 0, size);
+
+        Assert.Equal(Transparent, quarter);
+        Assert.Equal(Transparent, threeQuarters);
+    }
+
+    [Theory]
+    [MemberData(nameof(SizesAndBarStates))]
+    public void Render_HalfFullDrive_FillsTheLeftHalfOfTheBarInTheStateColour(int size, TrayState state)
+    {
+        ((byte, byte, byte, byte) quarter, (byte, byte, byte, byte) threeQuarters) = BarColumns(state, 50, size);
+
+        Assert.Equal(Opaque(TrayIconRenderer.BarColor(state)), quarter);
+        Assert.Equal(Transparent, threeQuarters);
+    }
+
+    [Theory]
+    [MemberData(nameof(SizesAndBarStates))]
+    public void Render_FullDrive_FillsTheWholeBarInTheStateColour(int size, TrayState state)
+    {
+        ((byte, byte, byte, byte) quarter, (byte, byte, byte, byte) threeQuarters) = BarColumns(state, 100, size);
+
+        Assert.Equal(Opaque(TrayIconRenderer.BarColor(state)), quarter);
+        Assert.Equal(Opaque(TrayIconRenderer.BarColor(state)), threeQuarters);
     }
 
     [Fact]
-    public void FillColor_ThreeStates_AreDistinct() =>
-        Assert.Equal(3, Enum.GetValues<TrayState>().Select(TrayIconRenderer.FillColor).Distinct().Count());
-
-    private static RenderResult Measure(TrayState state)
+    public void BarColor_OkAndAlert_AreBlueAndRed()
     {
-        BitmapSource bitmap = TrayIconRenderer.Render(state);
-        using var icon = TrayIconRenderer.ToIcon(bitmap);
-        using var iconBitmap = icon.ToBitmap();
-        System.Drawing.Color iconCentre = iconBitmap.GetPixel(16, 16);
-        return new RenderResult(
-            bitmap.PixelWidth,
-            bitmap.PixelHeight,
-            Pixel(bitmap, 16, 16),
-            Pixel(bitmap, 0, 0),
-            icon.Width,
-            icon.Height,
-            (iconCentre.R, iconCentre.G, iconCentre.B)
-        );
+        Color ok = TrayIconRenderer.BarColor(TrayState.Ok);
+        Color alert = TrayIconRenderer.BarColor(TrayState.Alert);
+
+        Assert.True(ok.B > ok.R && ok.B > ok.G, $"OK bar {ok} is not blue.");
+        Assert.True(alert.R > alert.G && alert.R > alert.B, $"Alert bar {alert} is not red.");
     }
+
+    [Theory]
+    [MemberData(nameof(SizesAndStates))]
+    public void Render_StatusDot_ShowsOnlyForAlertAndDisconnected(int size, TrayState state)
+    {
+        Int32Rect dot = TrayIconRenderer.DotBounds(size);
+        (byte R, byte G, byte B, byte A) centre = RunOnSta(() =>
+            Pixel(TrayIconRenderer.Render(new TrayIconKey(state, 50, TaskbarTheme.Dark), size), dot.X + (dot.Width / 2), dot.Y + (dot.Height / 2))
+        );
+
+        if (TrayIconRenderer.DotColor(state) is Color expected)
+        {
+            Assert.Equal(Opaque(expected), centre);
+        }
+        else
+        {
+            Assert.NotEqual(Opaque(TrayIconRenderer.DotColor(TrayState.Alert)!.Value), centre);
+            Assert.NotEqual(Opaque(TrayIconRenderer.DotColor(TrayState.Disconnected)!.Value), centre);
+        }
+    }
+
+    [Theory]
+    [MemberData(nameof(SizesAndThemes))]
+    public void Render_Outline_FollowsTheTaskbarTheme(int size, TaskbarTheme taskbar)
+    {
+        Int32Rect bar = TrayIconRenderer.BarBounds(size);
+        (byte R, byte G, byte B, byte A) leftEdge = RunOnSta(() =>
+            Pixel(TrayIconRenderer.Render(new TrayIconKey(TrayState.Ok, 50, taskbar), size), 0, bar.Y + (bar.Height / 2))
+        );
+
+        Assert.Equal(Opaque(TrayIconRenderer.OutlineColor(taskbar)), leftEdge);
+    }
+
+    [Fact]
+    public void OutlineColor_LightTaskbar_IsDarkerThanOnADarkTaskbar()
+    {
+        Color onLight = TrayIconRenderer.OutlineColor(TaskbarTheme.Light);
+        Color onDark = TrayIconRenderer.OutlineColor(TaskbarTheme.Dark);
+
+        Assert.True(onLight.R + onLight.G + onLight.B < onDark.R + onDark.G + onDark.B);
+    }
+
+    [Theory]
+    [MemberData(nameof(Sizes))]
+    public void RenderIcon_HoldsEverySize_AndUsesThePreferredOne(int preferred)
+    {
+        (int Preferred, int[] Picked) result = RunOnSta(() =>
+        {
+            using DrawingIcon icon = TrayIconRenderer.RenderIcon(new TrayIconKey(TrayState.Alert, 95, TaskbarTheme.Light), preferred);
+            int[] picked = [.. TrayIconRenderer.Sizes.Select(size => PickedWidth(icon, size))];
+            return (icon.Width, picked);
+        });
+
+        Assert.Equal(preferred, result.Preferred);
+        Assert.Equal(TrayIconRenderer.Sizes, result.Picked);
+    }
+
+    [Fact]
+    public void Render_UnsupportedSize_Throws() =>
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            RunOnSta(() => TrayIconRenderer.Render(new TrayIconKey(TrayState.Ok, 0, TaskbarTheme.Dark), 48))
+        );
+
+    [Theory]
+    [InlineData(0, 0)]
+    [InlineData(0.02, 0)]
+    [InlineData(0.03, 5)]
+    [InlineData(0.52, 50)]
+    [InlineData(0.53, 55)]
+    [InlineData(0.97, 95)]
+    [InlineData(0.98, 100)]
+    [InlineData(1, 100)]
+    [InlineData(-0.5, 0)]
+    [InlineData(1.5, 100)]
+    [InlineData(double.NaN, 0)]
+    public void QuantiseFill_RoundsToTheNearestFivePercent(double fraction, int expected) =>
+        Assert.Equal(expected, TrayIconKey.QuantiseFill(fraction));
+
+    [Fact]
+    public void Create_FractionsInTheSameStep_GiveEqualKeys() =>
+        Assert.Equal(TrayIconKey.Create(TrayState.Ok, 0.49, TaskbarTheme.Dark), TrayIconKey.Create(TrayState.Ok, 0.52, TaskbarTheme.Dark));
+
+    private static int PickedWidth(DrawingIcon icon, int size)
+    {
+        using DrawingIcon picked = new(icon, size, size);
+        return picked.Width;
+    }
+
+    private static ((byte R, byte G, byte B, byte A) Quarter, (byte R, byte G, byte B, byte A) ThreeQuarters) BarColumns(
+        TrayState state,
+        int fillPercent,
+        int size
+    )
+    {
+        Int32Rect bar = TrayIconRenderer.BarBounds(size);
+        return RunOnSta(() =>
+        {
+            BitmapSource bitmap = TrayIconRenderer.Render(new TrayIconKey(state, fillPercent, TaskbarTheme.Dark), size);
+            return (Pixel(bitmap, bar.X + (bar.Width / 4), bar.Y), Pixel(bitmap, bar.X + (bar.Width * 3 / 4), bar.Y));
+        });
+    }
+
+    private static (byte R, byte G, byte B, byte A) Opaque(Color color) => (color.R, color.G, color.B, 255);
 
     private static (byte R, byte G, byte B, byte A) Pixel(BitmapSource bitmap, int x, int y)
     {
@@ -74,14 +206,4 @@ public sealed class TrayIconRendererTests
         failure?.Throw();
         return result!;
     }
-
-    private sealed record RenderResult(
-        int Width,
-        int Height,
-        (byte R, byte G, byte B, byte A) CentrePixel,
-        (byte R, byte G, byte B, byte A) CornerPixel,
-        int IconWidth,
-        int IconHeight,
-        (byte R, byte G, byte B) IconCentre
-    );
 }

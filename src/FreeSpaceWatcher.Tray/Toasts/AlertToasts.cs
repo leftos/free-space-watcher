@@ -1,9 +1,10 @@
 using System.Globalization;
 using FreeSpaceWatcher.Core.Alerts;
-using FreeSpaceWatcher.Core.Formatting;
+using FreeSpaceWatcher.Core.Config;
 using FreeSpaceWatcher.Core.Ipc;
 using FreeSpaceWatcher.Core.Writes;
 using FreeSpaceWatcher.Tray.Alerts;
+using FreeSpaceWatcher.Tray.Status;
 using Microsoft.Toolkit.Uwp.Notifications;
 
 namespace FreeSpaceWatcher.Tray.Toasts;
@@ -128,9 +129,23 @@ public static class AlertToasts
     /// <returns>The slot.</returns>
     public static ToastSlot ProcessActionSlot(int processId) => new(string.Create(CultureInfo.InvariantCulture, $"action-{processId}"), ActionsGroup);
 
-    /// <summary>Shows a toast for a new alert: the reason, the top writer and its top folder, and Details / Suspend / Open folder.</summary>
+    /// <summary>
+    /// Shows a toast for a new alert (see <see cref="AlertToastContent"/>): the drive and its most urgent fact, the loss rate and
+    /// free space, the top writer and its top folder, a bar of the drive's used space, and Details / Suspend / Open folder.
+    /// </summary>
     /// <param name="alert">The alert.</param>
-    public static void ShowAlert(Alert alert) => Show(BuildAlert(alert), AlertSlot(alert));
+    /// <param name="floorBytes">The drive's floor, for a floor alert's title, or null when the configuration is not known.</param>
+    public static void ShowAlert(Alert alert, long? floorBytes) => Show(BuildAlert(alert, floorBytes), AlertSlot(alert));
+
+    /// <summary>Gets an alert drive's floor under a configuration: the larger of its byte and percentage floors.</summary>
+    /// <param name="config">The configuration, or null when it is not loaded.</param>
+    /// <param name="alert">The alert, whose drive size the percentage applies to.</param>
+    /// <returns>The floor in bytes, or null without a configuration.</returns>
+    public static long? FloorBytes(WatcherConfig? config, Alert alert)
+    {
+        ArgumentNullException.ThrowIfNull(alert);
+        return config is null ? null : DriveSeverityRules.FloorBytes(config.For(alert.Drive), alert.TotalBytes);
+    }
 
     /// <summary>
     /// Shows the outcome of a process action started from a toast: "Suspended pwsh (pid 41372)" with Resume and Details, or the
@@ -178,29 +193,16 @@ public static class AlertToasts
     public static string SummaryText(int count) =>
         count == 1 ? "1 unacknowledged disk alert" : string.Create(CultureInfo.CurrentCulture, $"{count} unacknowledged disk alerts");
 
-    /// <summary>Formats an alert toast's body: the top writer, its bytes written and its top folder.</summary>
-    /// <param name="alert">The alert.</param>
-    /// <returns>The body text.</returns>
-    public static string Body(Alert alert)
+    private static ToastContentBuilder BuildAlert(Alert alert, long? floorBytes)
     {
-        ArgumentNullException.ThrowIfNull(alert);
-        if (TopWriter(alert) is not { } top)
-        {
-            return $"No traced writer; {ByteFormat.Format(alert.UnattributedBytes)} unattributed";
-        }
-
-        string written = $"{top.Name} wrote {ByteFormat.Format(top.BytesWritten)}";
-        return TopFolder(top) is string folder ? $"{written} in {folder}" : written;
-    }
-
-    private static ToastContentBuilder BuildAlert(Alert alert)
-    {
-        ArgumentNullException.ThrowIfNull(alert);
+        var content = AlertToastContent.From(alert, floorBytes);
         ToastContentBuilder builder = new ToastContentBuilder()
             .AddArgument(ToastRequest.ActionKey, ToastRequest.DetailsAction)
             .AddArgument(ToastRequest.AlertIdKey, alert.Id)
-            .AddText(alert.Reason)
-            .AddText(Body(alert))
+            .AddText(content.Title)
+            .AddText(content.Body)
+            .AddAttributionText(content.Attribution)
+            .AddProgressBar(content.ProgressTitle, content.UsedFraction, isIndeterminate: false, content.ProgressValue, content.ProgressStatus)
             .AddButton(
                 new ToastButton()
                     .SetContent("Details")

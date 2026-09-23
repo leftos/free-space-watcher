@@ -13,7 +13,7 @@ using FreeSpaceWatcher.Tray.Status;
 using FreeSpaceWatcher.Tray.Toasts;
 using H.NotifyIcon;
 using Microsoft.Toolkit.Uwp.Notifications;
-using DrawingIcon = System.Drawing.Icon;
+using Microsoft.Win32;
 
 namespace FreeSpaceWatcher.Tray;
 
@@ -27,10 +27,10 @@ public sealed class TrayHost : ITrayShell, IDisposable
     private readonly PipeClient _client;
     private readonly MessageBoxDialogs _dialogs = new();
     private readonly ShellActions _shellActions;
-    private readonly Dictionary<TrayState, DrawingIcon> _icons;
     private readonly TrayIconSetter _iconSetter;
     private readonly TrayViewModel _tray;
     private readonly TaskbarIcon _taskbarIcon;
+    private TaskbarTheme _taskbarTheme;
     private AlertsWindow? _alertsWindow;
     private SettingsWindow? _settingsWindow;
     private StatusWindow? _statusWindow;
@@ -47,10 +47,11 @@ public sealed class TrayHost : ITrayShell, IDisposable
         _log = log;
         _client = new PipeClient(PipeProtocol.PipeName, PipeClient.DefaultRequestTimeout, log);
         _shellActions = new ShellActions(ShellActions.DefaultElevateHelperPath, log);
-        _icons = Enum.GetValues<TrayState>().ToDictionary(s => s, s => TrayIconRenderer.ToIcon(TrayIconRenderer.Render(s)));
         _tray = new TrayViewModel(_client, this, log);
         _taskbarIcon = CreateTaskbarIcon();
-        _iconSetter = new TrayIconSetter(_taskbarIcon, _icons);
+        int iconSize = TrayIconRenderer.SmallIconPixels();
+        _iconSetter = new TrayIconSetter(_taskbarIcon, key => TrayIconRenderer.RenderIcon(key, iconSize));
+        _taskbarTheme = TaskbarThemeReader.Read();
     }
 
     /// <summary>Shows the icon, listens for toast clicks and starts connecting.</summary>
@@ -73,6 +74,7 @@ public sealed class TrayHost : ITrayShell, IDisposable
         _client.AlertReceived += (_, alert) => Post(() => OnAlertAsync(alert));
         _client.AlertsChanged += (_, _) => Post(OnAlertsChangedAsync);
         ToastNotificationManagerCompat.OnActivated += OnToastActivated;
+        SystemEvents.UserPreferenceChanged += OnUserPreferenceChanged;
         UpdateIcon();
         _taskbarIcon.ForceCreate(enablesEfficiencyMode: false);
         _client.Start();
@@ -147,7 +149,7 @@ public sealed class TrayHost : ITrayShell, IDisposable
     }
 
     /// <inheritdoc/>
-    public void ShowAlertToast(Alert alert) => AlertToasts.ShowAlert(alert);
+    public void ShowAlertToast(Alert alert) => AlertToasts.ShowAlert(alert, AlertToasts.FloorBytes(_tray.Config, alert));
 
     /// <inheritdoc/>
     public void ShowSummaryToast(int count) => AlertToasts.ShowSummary(count);
@@ -180,6 +182,7 @@ public sealed class TrayHost : ITrayShell, IDisposable
     public void Dispose()
     {
         ToastNotificationManagerCompat.OnActivated -= OnToastActivated;
+        SystemEvents.UserPreferenceChanged -= OnUserPreferenceChanged;
         _pendingOpenTimer?.Stop();
         _alertsWindow?.Close();
         _settingsWindow?.Close();
@@ -190,10 +193,7 @@ public sealed class TrayHost : ITrayShell, IDisposable
             _log.Warning("The pipe client did not stop within 2 s of exit.", null);
         }
 
-        foreach (DrawingIcon icon in _icons.Values)
-        {
-            icon.Dispose();
-        }
+        _iconSetter.Dispose();
     }
 
     private TaskbarIcon CreateTaskbarIcon()
@@ -305,9 +305,25 @@ public sealed class TrayHost : ITrayShell, IDisposable
         SyncStatusWindow();
     }
 
+    // The General category is the one raised when the light or dark setting of the taskbar changes; it arrives on the
+    // SystemEvents thread, so the icon is updated on the UI thread.
+    private void OnUserPreferenceChanged(object sender, UserPreferenceChangedEventArgs e)
+    {
+        if (e.Category != UserPreferenceCategory.General)
+        {
+            return;
+        }
+
+        Post(() =>
+        {
+            _taskbarTheme = TaskbarThemeReader.Read();
+            UpdateIcon();
+        });
+    }
+
     private void UpdateIcon()
     {
-        _iconSetter.Apply(_tray.State);
+        _iconSetter.Apply(TrayIconKey.Create(_tray.State, _tray.UsedFraction, _taskbarTheme));
         _taskbarIcon.ToolTipText = _tray.ToolTipText;
     }
 }

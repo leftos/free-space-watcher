@@ -12,8 +12,13 @@ The tray connects to whichever service is running; the installed one is fine.
 A tray is single-instance per session, so any running tray is stopped first, and the installed tray is started again at the
 end (also when a capture fails), so the user's tray comes back.
 
+-Window icons instead runs the tray with --render-icons <Out>/icons.png, which draws every tray icon (each state, fill 0, 50
+and 95 %, dark and light taskbar, 16 to 32 px, magnified three times) into one PNG and exits; it ignores -Theme and leaves
+any running tray alone.
+
 .PARAMETER Window
-The windows to capture: status, alerts, settings; a comma-separated list such as alerts,settings also works under pwsh -File.
+The windows to capture: status, alerts, settings, or icons for the tray icon strip; a comma-separated list such as
+alerts,settings also works under pwsh -File.
 
 .PARAMETER Theme
 The themes to capture them in: light, dark, system; comma-separated lists work as for -Window.
@@ -26,6 +31,9 @@ How long to keep each window open after it appears before capturing it, so live 
 
 .EXAMPLE
 pwsh -NoProfile -File scripts/capture-ui.ps1 -Window status -Theme dark
+
+.EXAMPLE
+pwsh -NoProfile -File scripts/capture-ui.ps1 -Window icons
 #>
 [CmdletBinding()]
 param(
@@ -66,7 +74,9 @@ function Split-NameList {
     return $names
 }
 
-$Window = Split-NameList -Value $Window -Allowed @('status', 'alerts', 'settings') -Parameter 'Window'
+$Window = Split-NameList -Value $Window -Allowed @('status', 'alerts', 'settings', 'icons') -Parameter 'Window'
+$captureIcons = 'icons' -in $Window
+$Window = @($Window | Where-Object { $_ -ne 'icons' })
 $Theme = Split-NameList -Value $Theme -Allowed @('light', 'dark', 'system') -Parameter 'Theme'
 
 $drawingReferences = @(
@@ -233,6 +243,21 @@ function Wait-TrayWindow {
     throw "The window '$Title' did not appear within $($windowTimeout.TotalSeconds) s."
 }
 
+# --render-icons takes no single-instance mutex, so a running tray is left alone.
+function Save-IconStrip {
+    param(
+        [Parameter(Mandatory)][string]$TrayPath,
+        [Parameter(Mandatory)][string]$Path
+    )
+
+    $render = Start-Process -FilePath $TrayPath -ArgumentList @('--render-icons', "`"$Path`"") -PassThru -Wait
+    if ($render.ExitCode -ne 0) {
+        throw "The tray exited with code $($render.ExitCode) rendering the icons; see the tray log."
+    }
+
+    Write-Information "Captured $Path"
+}
+
 $trayExe = Get-ChildItem -Path (Join-Path $repoRoot 'src/FreeSpaceWatcher.Tray/bin/Debug') -Filter 'FreeSpaceWatcher.Tray.exe' -Recurse -ErrorAction SilentlyContinue |
     Sort-Object -Property LastWriteTime -Descending |
     Select-Object -First 1
@@ -242,6 +267,14 @@ if ($null -eq $trayExe) {
 
 $outFolder = if ([System.IO.Path]::IsPathRooted($Out)) { $Out } else { Join-Path $repoRoot $Out }
 New-Item -ItemType Directory -Force -Path $outFolder | Out-Null
+
+if ($captureIcons) {
+    Save-IconStrip -TrayPath $trayExe.FullName -Path (Join-Path $outFolder 'icons.png')
+}
+
+if ($Window.Count -eq 0) {
+    return
+}
 
 $running = @(Get-Process -Name 'FreeSpaceWatcher.Tray' -ErrorAction SilentlyContinue)
 if ($running.Count -gt 0) {

@@ -5,7 +5,7 @@ using DrawingIcon = System.Drawing.Icon;
 
 namespace FreeSpaceWatcher.Tray.Tests.Icons;
 
-/// <summary>The setter hands the taskbar icon a clone, so the rendered icons the tray keeps stay usable.</summary>
+/// <summary>The setter hands the taskbar icon a clone, so the rendered icons it keeps stay usable, and skips unchanged keys.</summary>
 public sealed class TrayIconSetterTests
 {
     private static readonly TrayState[] CrashSequence =
@@ -21,68 +21,74 @@ public sealed class TrayIconSetterTests
     [Fact]
     public void Apply_StatesAlternatingBetweenOkAlertAndDisconnected_AssignsEachStateAndDoesNotThrow()
     {
-        RunOnSta(() =>
+        (int Assignments, int Renders) counts = Run(setter =>
         {
-            using TaskbarIcon taskbarIcon = new();
-            Dictionary<TrayState, DrawingIcon> icons = RenderAll();
-            try
+            foreach (TrayState state in CrashSequence)
             {
-                TrayIconSetter setter = new(taskbarIcon, icons);
-
-                foreach (TrayState state in CrashSequence)
-                {
-                    setter.Apply(state);
-                }
-
-                Assert.Equal(CrashSequence.Length, setter.Assignments);
-            }
-            finally
-            {
-                DisposeAll(icons);
+                setter.Apply(TrayIconKey.Create(state, 0.5, TaskbarTheme.Dark));
             }
         });
+
+        Assert.Equal((CrashSequence.Length, 3), counts);
     }
 
     [Fact]
-    public void Apply_SameStateThreeTimes_AssignsOnce()
+    public void Apply_FillMovesWithinOneFivePercentStep_AssignsOnce()
     {
+        (int Assignments, int Renders) counts = Run(setter =>
+        {
+            setter.Apply(TrayIconKey.Create(TrayState.Ok, 0.51, TaskbarTheme.Dark));
+            setter.Apply(TrayIconKey.Create(TrayState.Ok, 0.52, TaskbarTheme.Dark));
+            setter.Apply(TrayIconKey.Create(TrayState.Ok, 0.49, TaskbarTheme.Dark));
+        });
+
+        Assert.Equal((1, 1), counts);
+    }
+
+    [Fact]
+    public void Apply_FillCrossesAStep_Reassigns()
+    {
+        (int Assignments, int Renders) counts = Run(setter =>
+        {
+            setter.Apply(TrayIconKey.Create(TrayState.Ok, 0.52, TaskbarTheme.Dark));
+            setter.Apply(TrayIconKey.Create(TrayState.Ok, 0.53, TaskbarTheme.Dark));
+        });
+
+        Assert.Equal((2, 2), counts);
+    }
+
+    [Fact]
+    public void Apply_TaskbarThemeChanges_Reassigns()
+    {
+        (int Assignments, int Renders) counts = Run(setter =>
+        {
+            setter.Apply(TrayIconKey.Create(TrayState.Ok, 0.5, TaskbarTheme.Dark));
+            setter.Apply(TrayIconKey.Create(TrayState.Ok, 0.5, TaskbarTheme.Light));
+        });
+
+        Assert.Equal((2, 2), counts);
+    }
+
+    [Fact]
+    public void Apply_KeySeenBefore_ReusesItsRenderedIcon()
+    {
+        (int Assignments, int Renders) counts = Run(setter =>
+        {
+            setter.Apply(TrayIconKey.Create(TrayState.Ok, 0.5, TaskbarTheme.Dark));
+            setter.Apply(TrayIconKey.Create(TrayState.Alert, 0.5, TaskbarTheme.Dark));
+            setter.Apply(TrayIconKey.Create(TrayState.Ok, 0.5, TaskbarTheme.Dark));
+        });
+
+        Assert.Equal((3, 2), counts);
+    }
+
+    private static (int Assignments, int Renders) Run(Action<TrayIconSetter> work) =>
         RunOnSta(() =>
         {
             using TaskbarIcon taskbarIcon = new();
-            Dictionary<TrayState, DrawingIcon> icons = RenderAll();
-            try
-            {
-                TrayIconSetter setter = new(taskbarIcon, icons);
-
-                setter.Apply(TrayState.Ok);
-                setter.Apply(TrayState.Ok);
-                setter.Apply(TrayState.Ok);
-
-                Assert.Equal(1, setter.Assignments);
-            }
-            finally
-            {
-                DisposeAll(icons);
-            }
-        });
-    }
-
-    private static Dictionary<TrayState, DrawingIcon> RenderAll() =>
-        Enum.GetValues<TrayState>().ToDictionary(state => state, state => TrayIconRenderer.ToIcon(TrayIconRenderer.Render(state)));
-
-    private static void DisposeAll(Dictionary<TrayState, DrawingIcon> icons)
-    {
-        foreach (DrawingIcon icon in icons.Values)
-        {
-            icon.Dispose();
-        }
-    }
-
-    private static void RunOnSta(Action work) =>
-        RunOnSta<object?>(() =>
-        {
-            work();
-            return null;
+            using TrayIconSetter setter = new(taskbarIcon, key => TrayIconRenderer.RenderIcon(key, 16));
+            work(setter);
+            return (setter.Assignments, setter.Renders);
         });
 
     private static T RunOnSta<T>(Func<T> work)

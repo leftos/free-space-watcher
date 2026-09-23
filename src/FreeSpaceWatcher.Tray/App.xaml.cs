@@ -1,5 +1,8 @@
+using System.IO;
 using System.Windows;
+using FreeSpaceWatcher.Tray.Icons;
 using FreeSpaceWatcher.Tray.Instance;
+using FreeSpaceWatcher.Tray.Toasts;
 using Microsoft.Toolkit.Uwp.Notifications;
 
 namespace FreeSpaceWatcher.Tray;
@@ -7,7 +10,9 @@ namespace FreeSpaceWatcher.Tray;
 /// <summary>The tray application; it has no main window, runs once per user session, and runs until shut down explicitly.</summary>
 /// <remarks>
 /// Started with <c>--uninstall-notifications</c>, it removes its toast notification registration for the current user and
-/// exits (0 on success, 1 on failure) without showing the tray or taking the single-instance mutex. Otherwise it takes
+/// exits (0 on success, 1 on failure) without showing the tray or taking the single-instance mutex. The same holds for
+/// <c>--render-icons &lt;path&gt;</c>, which writes every tray icon into one PNG (<see cref="TrayIconStrip"/>), and for
+/// <c>--test-toast</c>, which shows the toast of the newest alert in history (<see cref="TestToast"/>). Otherwise it takes
 /// <c>--theme light|dark|system</c>, <c>--open alerts|settings|status</c> and <c>--select-latest</c> (see <see cref="TrayArguments"/>);
 /// a second launch while a tray runs hands its <c>--open</c> window, without <c>--select-latest</c>, to that tray through
 /// <see cref="TrayInstanceChannel"/> and exits.
@@ -71,6 +76,18 @@ public sealed partial class App : Application, IDisposable
             return;
         }
 
+        if (e.Args is [TrayIconStrip.Switch, string iconsPath])
+        {
+            Shutdown(RenderIcons(iconsPath));
+            return;
+        }
+
+        if (e.Args is [TestToast.Switch])
+        {
+            Dispatcher.BeginInvoke(new Action(async () => await ShowTestToastAsync()));
+            return;
+        }
+
         foreach (string problem in _arguments.Problems)
         {
             _log.Warning(problem, null);
@@ -128,6 +145,35 @@ public sealed partial class App : Application, IDisposable
         }
     }
 #pragma warning restore CA1031
+
+    // The app exits whatever happens; an unexpected failure still reaches the unhandled-exception log.
+    private async Task ShowTestToastAsync()
+    {
+        int exitCode = 1;
+        try
+        {
+            exitCode = await TestToast.ShowNewestAsync(_log);
+        }
+        finally
+        {
+            Shutdown(exitCode);
+        }
+    }
+
+    private int RenderIcons(string path)
+    {
+        try
+        {
+            TrayIconStrip.Save(path);
+            _log.Information($"{TrayIconStrip.Switch}: wrote {path}.", null);
+            return 0;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
+        {
+            _log.Warning($"{TrayIconStrip.Switch}: writing {path} failed.", ex);
+            return 1;
+        }
+    }
 
     /// <inheritdoc/>
     protected override void OnExit(ExitEventArgs e)
