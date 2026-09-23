@@ -1,0 +1,28 @@
+[[repos]]
+repo = "local"
+
+[[repos.hooks]]
+id = "dotnet-format-style"
+name = "dotnet format style (info)"
+entry = "pwsh tools/hooks/dotnet-format-wrapper.ps1 style"
+language = "system"
+types = ["c#"]
+require_serial = true
+stages = ["pre-commit"]
+
+[[repos.hooks]]
+id = "csharpier"
+name = "dotnet csharpier format"
+entry = "pwsh tools/hooks/csharpier-wrapper.ps1"
+language = "system"
+types = ["c#"]
+require_serial = true
+stages = ["pre-commit"]
+
+[[repos.hooks]]
+id = "dotnet-build"
+name = "dotnet build (warnings as errors)"
+entry = "dotnet build FreeSpaceWatcher.slnx -p:TreatWarningsAsErrors=true"
+language = "system"
+pass_filenames = false
+stages = ["pre-commit"]
