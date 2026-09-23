@@ -30,6 +30,7 @@ public sealed partial class App : Application, IDisposable
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
+        HookUnhandledExceptions();
         if (e.Args is [UninstallNotificationsSwitch])
         {
             Shutdown(UninstallNotifications());
@@ -47,6 +48,23 @@ public sealed partial class App : Application, IDisposable
         _instanceMutex = mutex;
         _host = new TrayHost(Dispatcher, _log);
         _host.Start();
+    }
+
+    // The tray is the service's only window, so a failed UI action is recorded and swallowed rather than taking the app down.
+    private void HookUnhandledExceptions()
+    {
+        DispatcherUnhandledException += (_, e) =>
+        {
+            _log.Warning("Unhandled UI exception; the tray keeps running.", e.Exception);
+            e.Handled = true;
+        };
+        TaskScheduler.UnobservedTaskException += (_, e) =>
+        {
+            _log.Warning("Unobserved task exception.", e.Exception);
+            e.SetObserved();
+        };
+        AppDomain.CurrentDomain.UnhandledException += (_, e) =>
+            _log.Warning("Fatal unhandled exception; the tray is exiting.", e.ExceptionObject as Exception);
     }
 
     // The uninstall script waits for this process to exit; a crash dialog would keep it, and the files it runs from, alive.

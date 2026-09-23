@@ -17,6 +17,9 @@ Design: [free-space-watcher.md](./free-space-watcher.md) (the approved design; r
 - [x] 8. Fix the four small backlog issues below (summary toast, tray.log in tests, process-state cap, second-instance config write) — user approved 2026-09-23; brief `.tmp/briefs/task-10.md`, runs after 7
 - [x] 7. Alerts UI: Acknowledge all, Clear (selected) and Clear all, as buttons and context-menu items (user request 2026-09-23)
 
+- [x] 9. Tray crash on Acknowledge all (H.NotifyIcon disposes the previous icon) + unhandled-exception logging
+- [ ] 10. UI design pass: make the tray windows look finished rather than scaffolded (user request 2026-09-23); runs after 9 — see [ui-design.md](./ui-design.md) (three passes; pass 1 brief `.tmp/briefs/task-12.md`)
+
 ## Backlog
 
 - [x] The summary toast shown on connect has no Tag/Group, so summary toasts from repeated reconnects may stack (not verified).

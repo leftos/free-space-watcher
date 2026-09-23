@@ -26,6 +26,7 @@ public sealed class TrayHost : ITrayShell, IDisposable
     private readonly MessageBoxDialogs _dialogs = new();
     private readonly ShellActions _shellActions;
     private readonly Dictionary<TrayState, DrawingIcon> _icons;
+    private readonly TrayIconSetter _iconSetter;
     private readonly TrayViewModel _tray;
     private readonly TaskbarIcon _taskbarIcon;
     private AlertsWindow? _alertsWindow;
@@ -43,6 +44,7 @@ public sealed class TrayHost : ITrayShell, IDisposable
         _icons = Enum.GetValues<TrayState>().ToDictionary(s => s, s => TrayIconRenderer.ToIcon(TrayIconRenderer.Render(s)));
         _tray = new TrayViewModel(_client, this, log);
         _taskbarIcon = CreateTaskbarIcon();
+        _iconSetter = new TrayIconSetter(_taskbarIcon, _icons);
     }
 
     /// <summary>Shows the icon, listens for toast clicks and starts connecting.</summary>
@@ -54,8 +56,8 @@ public sealed class TrayHost : ITrayShell, IDisposable
         _client.AlertReceived += (_, alert) => Post(() => OnAlertAsync(alert));
         _client.AlertsChanged += (_, _) => Post(OnAlertsChangedAsync);
         ToastNotificationManagerCompat.OnActivated += OnToastActivated;
-        _taskbarIcon.ForceCreate(enablesEfficiencyMode: false);
         UpdateIcon();
+        _taskbarIcon.ForceCreate(enablesEfficiencyMode: false);
         _client.Start();
     }
 
@@ -157,7 +159,6 @@ public sealed class TrayHost : ITrayShell, IDisposable
             LeftClickCommand = _tray.ShowAlertsCommand,
             NoLeftClickDelay = true,
             ToolTipText = _tray.ToolTipText,
-            Icon = _icons[_tray.State],
         };
     }
 
@@ -218,7 +219,7 @@ public sealed class TrayHost : ITrayShell, IDisposable
 
     private void UpdateIcon()
     {
-        _taskbarIcon.Icon = _icons[_tray.State];
+        _iconSetter.Apply(_tray.State);
         _taskbarIcon.ToolTipText = _tray.ToolTipText;
     }
 }
