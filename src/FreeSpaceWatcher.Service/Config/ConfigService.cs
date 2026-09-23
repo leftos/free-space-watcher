@@ -76,12 +76,12 @@ public sealed partial class ConfigService
     private static string[] ReadyDriveLetters() =>
         [.. DriveInfo.GetDrives().Where(d => d.DriveType is DriveType.Fixed or DriveType.Removable && d.IsReady).Select(d => d.Name)];
 
-    [LoggerMessage(Level = LogLevel.Information, Message = "Configuration loaded from {Path}")]
+    [LoggerMessage(EventId = 1000, Level = LogLevel.Information, Message = "Configuration loaded from {Path}")]
     private static partial void LogLoaded(ILogger logger, string path);
 
-    [LoggerMessage(Level = LogLevel.Warning, Message = "Configuration could not be loaded: {Error}")]
+    [LoggerMessage(EventId = 1001, Level = LogLevel.Warning, Message = "Configuration could not be loaded: {Error}")]
     private static partial void LogLoadError(ILogger logger, string error);
 
-    [LoggerMessage(Level = LogLevel.Information, Message = "Configuration updated")]
+    [LoggerMessage(EventId = 1002, Level = LogLevel.Information, Message = "Configuration updated")]
     private static partial void LogUpdated(ILogger logger);
 }

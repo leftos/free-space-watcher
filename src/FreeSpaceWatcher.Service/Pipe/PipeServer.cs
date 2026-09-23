@@ -230,24 +230,24 @@ public sealed partial class PipeServer(PipeRequestHandler handler, StatusHub hub
         }
     }
 
-    [LoggerMessage(Level = LogLevel.Information, Message = "Listening on pipe {PipeName}")]
+    [LoggerMessage(EventId = 1401, Level = LogLevel.Information, Message = "Listening on pipe {PipeName}")]
     private static partial void LogListening(ILogger logger, string pipeName);
 
-    [LoggerMessage(Level = LogLevel.Warning, Message = "Accepting a pipe client failed")]
+    [LoggerMessage(EventId = 1402, Level = LogLevel.Warning, Message = "Accepting a pipe client failed")]
     private static partial void LogAcceptFailed(ILogger logger, Exception exception);
 
-    [LoggerMessage(Level = LogLevel.Debug, Message = "Pipe client {ClientId} connected")]
+    [LoggerMessage(EventId = 1403, Level = LogLevel.Debug, Message = "Pipe client {ClientId} connected")]
     private static partial void LogClientConnected(ILogger logger, int clientId);
 
-    [LoggerMessage(Level = LogLevel.Debug, Message = "Pipe client {ClientId} sent SubscribeRequest")]
+    [LoggerMessage(EventId = 1404, Level = LogLevel.Debug, Message = "Pipe client {ClientId} sent SubscribeRequest")]
     private static partial void LogSubscribe(ILogger logger, int clientId);
 
-    [LoggerMessage(Level = LogLevel.Debug, Message = "Pipe client {ClientId} disconnected: {Reason}")]
+    [LoggerMessage(EventId = 1405, Level = LogLevel.Debug, Message = "Pipe client {ClientId} disconnected: {Reason}")]
     private static partial void LogClientGone(ILogger logger, int clientId, string reason);
 
-    [LoggerMessage(Level = LogLevel.Debug, Message = "Malformed pipe message: {Error}")]
+    [LoggerMessage(EventId = 1406, Level = LogLevel.Debug, Message = "Malformed pipe message: {Error}")]
     private static partial void LogMalformed(ILogger logger, string error);
 
-    [LoggerMessage(Level = LogLevel.Warning, Message = "Handling {RequestType} failed")]
+    [LoggerMessage(EventId = 1407, Level = LogLevel.Warning, Message = "Handling {RequestType} failed")]
     private static partial void LogRequestFailed(ILogger logger, Exception exception, string requestType);
 }

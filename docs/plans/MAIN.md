@@ -14,4 +14,4 @@ Design: [free-space-watcher.md](./free-space-watcher.md) (the approved design; r
 
 ## Backlog
 
-(empty)
+- [ ] Write accounting is off for a sequential cached writer. In the first E2E fill test (2026-09-23, alert `20260923-125021-C-TimeToFull`), `fill.bin` showed BytesWritten 5.55 GB and ExtendBytes 2.46 GB against a CurrentSize of 4.84 GB taken at alert time. So writes are over-counted by about 15% (non-paging writes counted twice?) and end-of-file growth is under-counted (EOF events before the first write, or valid-data-length events?), which inflates UnattributedBytes (2.38 GB). Reproduce with `scripts/fill-test.ps1` plus the elevated integration test, inspecting the IoFlags and SetInfo classes in the raw events.

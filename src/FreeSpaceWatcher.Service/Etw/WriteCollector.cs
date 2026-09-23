@@ -167,22 +167,27 @@ public sealed partial class WriteCollector(
         }
     }
 
-    [LoggerMessage(Level = LogLevel.Warning, Message = "Write tracing is off: {Reason}. Free-space sampling and alerts keep running.")]
+    [LoggerMessage(
+        EventId = 1200,
+        Level = LogLevel.Warning,
+        Message = "Write tracing is off: {Reason}. Free-space sampling and alerts keep running."
+    )]
     private static partial void LogNotElevated(ILogger logger, string reason);
 
-    [LoggerMessage(Level = LogLevel.Information, Message = "ETW session {SessionName} started")]
+    [LoggerMessage(EventId = 1201, Level = LogLevel.Information, Message = "ETW session {SessionName} started")]
     private static partial void LogSessionStarted(ILogger logger, string sessionName);
 
-    [LoggerMessage(Level = LogLevel.Information, Message = "Stopped a stale ETW session named {SessionName}")]
+    [LoggerMessage(EventId = 1202, Level = LogLevel.Information, Message = "Stopped a stale ETW session named {SessionName}")]
     private static partial void LogStaleSessionStopped(ILogger logger, string sessionName);
 
-    [LoggerMessage(Level = LogLevel.Warning, Message = "The ETW session failed")]
+    [LoggerMessage(EventId = 1203, Level = LogLevel.Warning, Message = "The ETW session failed")]
     private static partial void LogSessionFailed(ILogger logger, Exception exception);
 
-    [LoggerMessage(Level = LogLevel.Warning, Message = "Write tracing stopped: {Reason} Retrying in {Delay}.")]
+    [LoggerMessage(EventId = 1204, Level = LogLevel.Warning, Message = "Write tracing stopped: {Reason} Retrying in {Delay}.")]
     private static partial void LogRetrying(ILogger logger, string reason, TimeSpan delay);
 
     [LoggerMessage(
+        EventId = 1205,
         Level = LogLevel.Debug,
         Message = "File events dropped for paths without a drive letter: {Unmapped}; "
             + "paging-I/O writes dropped (cache and mapped-page flushes): {PagingWrites}; "

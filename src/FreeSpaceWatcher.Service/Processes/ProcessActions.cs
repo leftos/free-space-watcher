@@ -45,6 +45,6 @@ public sealed partial class ProcessActions(ILogger<ProcessActions> logger)
 
     private static ProcessActionResponse ToResponse(ProcessControlResult result) => new(result.Ok, result.AccessDenied, result.Error);
 
-    [LoggerMessage(Level = LogLevel.Information, Message = "Process action {Action} on pid {ProcessId}: ok={Ok} {Error}")]
+    [LoggerMessage(EventId = 1500, Level = LogLevel.Information, Message = "Process action {Action} on pid {ProcessId}: ok={Ok} {Error}")]
     private static partial void LogAction(ILogger logger, ProcessAction action, int processId, bool ok, string error);
 }

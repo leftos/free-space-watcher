@@ -198,15 +198,15 @@ public sealed partial class DriveSampler(
         LogWatching(logger, watched.Length == 0 ? "none" : string.Join(", ", watched));
     }
 
-    [LoggerMessage(Level = LogLevel.Information, Message = "Watching drives: {Drives}")]
+    [LoggerMessage(EventId = 1100, Level = LogLevel.Information, Message = "Watching drives: {Drives}")]
     private static partial void LogWatching(ILogger logger, string drives);
 
-    [LoggerMessage(Level = LogLevel.Warning, Message = "Drive {Letter}: is unavailable: {Problem}")]
+    [LoggerMessage(EventId = 1101, Level = LogLevel.Warning, Message = "Drive {Letter}: is unavailable: {Problem}")]
     private static partial void LogDriveUnavailable(ILogger logger, string letter, string problem);
 
-    [LoggerMessage(Level = LogLevel.Information, Message = "Drive {Letter}: is available again")]
+    [LoggerMessage(EventId = 1102, Level = LogLevel.Information, Message = "Drive {Letter}: is available again")]
     private static partial void LogDriveBack(ILogger logger, string letter);
 
-    [LoggerMessage(Level = LogLevel.Error, Message = "Sampling failed; retrying in {Delay}")]
+    [LoggerMessage(EventId = 1103, Level = LogLevel.Error, Message = "Sampling failed; retrying in {Delay}")]
     private static partial void LogTickFailed(ILogger logger, Exception exception, TimeSpan delay);
 }

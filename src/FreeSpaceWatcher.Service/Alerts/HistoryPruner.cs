@@ -45,9 +45,9 @@ public sealed partial class HistoryPruner(ConfigService config, HistoryStore his
         }
     }
 
-    [LoggerMessage(Level = LogLevel.Information, Message = "Pruned {Count} old alerts from history")]
+    [LoggerMessage(EventId = 1302, Level = LogLevel.Information, Message = "Pruned {Count} old alerts from history")]
     private static partial void LogPruned(ILogger logger, int count);
 
-    [LoggerMessage(Level = LogLevel.Warning, Message = "Could not prune the alert history; retrying in {Delay}")]
+    [LoggerMessage(EventId = 1303, Level = LogLevel.Warning, Message = "Could not prune the alert history; retrying in {Delay}")]
     private static partial void LogPruneFailed(ILogger logger, Exception exception, TimeSpan delay);
 }

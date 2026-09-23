@@ -140,9 +140,9 @@ public sealed partial class AlertEngine(
         }
     }
 
-    [LoggerMessage(Level = LogLevel.Warning, Message = "Alert {AlertId}: {Reason}. Top writer: {TopWriter}")]
+    [LoggerMessage(EventId = 1300, Level = LogLevel.Warning, Message = "Alert {AlertId}: {Reason}. Top writer: {TopWriter}")]
     private static partial void LogAlert(ILogger logger, string alertId, string reason, string topWriter);
 
-    [LoggerMessage(Level = LogLevel.Debug, Message = "Could not read the size of {Path}: {Error}")]
+    [LoggerMessage(EventId = 1301, Level = LogLevel.Debug, Message = "Could not read the size of {Path}: {Error}")]
     private static partial void LogSizeUnavailable(ILogger logger, string path, string error);
 }

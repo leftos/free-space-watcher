@@ -68,6 +68,6 @@ public sealed partial class PipeRequestHandler(
         }
     }
 
-    [LoggerMessage(Level = LogLevel.Warning, Message = "Saving the configuration failed")]
+    [LoggerMessage(EventId = 1400, Level = LogLevel.Warning, Message = "Saving the configuration failed")]
     private static partial void LogSaveFailed(ILogger logger, Exception exception);
 }
