@@ -12,7 +12,14 @@ Design: [free-space-watcher.md](./free-space-watcher.md) (the approved design; r
 - [x] 5. Elevate helper; install/uninstall/fill-test scripts; README usage
 - [ ] 6. End-to-end verification on this machine (design doc, "Verification"); includes the first elevated run of `dotnet test tests/FreeSpaceWatcher.Service.Tests` (ETW integration test, never yet run) and settling the "Known limits" wording from it
 
+   - Done 2026-09-23: elevated ETW test (exact counts), install via sudo, three fill tests (alerts, toast replaced in place, suspend from toast, exact write/growth accounting, event log text). Not yet done: Resume from the new confirmation toast by hand, the alert with the tray closed, reboot, uninstall.
+
 ## Backlog
+
+- [ ] The summary toast shown on connect has no Tag/Group, so summary toasts from repeated reconnects may stack (not verified).
+- [ ] Tray tests that hit failure paths write to the developer's real `%LOCALAPPDATA%\FreeSpaceWatcher\tray.log` because `TrayLog`'s path is fixed.
+- [ ] `GetProcessStatesRequest` has no cap on pids; each `QueryRunState` snapshots all processes (not measured).
+- [ ] A second service instance pointed at another data folder writes that folder's `config.json` before failing on the pipe (ConfigService is built before PipeServer starts).
 
 - [x] Process actions give no feedback, and suspends stack. In the second E2E fill (2026-09-23), the user pressed Resume and nothing visible happened; the process stayed suspended until a pipe-sent resume. Needed: a result shown for every action (window status line, and a confirmation toast for toast buttons); Suspend that does nothing on an already-suspended process and Resume that clears every suspend (NtSuspendProcess counts per call); the process's suspended state shown in the Alerts tree; tray-side logging of each action and its response.
 
