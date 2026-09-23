@@ -1,7 +1,9 @@
 using System.Globalization;
 using FreeSpaceWatcher.Core.Alerts;
 using FreeSpaceWatcher.Core.Formatting;
+using FreeSpaceWatcher.Core.Ipc;
 using FreeSpaceWatcher.Core.Writes;
+using FreeSpaceWatcher.Tray.Alerts;
 using Microsoft.Toolkit.Uwp.Notifications;
 
 namespace FreeSpaceWatcher.Tray.Toasts;
@@ -9,7 +11,7 @@ namespace FreeSpaceWatcher.Tray.Toasts;
 /// <summary>What a click on a toast or one of its buttons asks the tray to do.</summary>
 /// <param name="Action">One of the <c>*Action</c> constants.</param>
 /// <param name="AlertId">The alert the toast is about, if any.</param>
-/// <param name="ProcessId">The process to act on, for <see cref="SuspendAction"/>.</param>
+/// <param name="ProcessId">The process to act on, for <see cref="SuspendAction"/> and <see cref="ResumeAction"/>.</param>
 /// <param name="ProcessStartTime">The process start time, when known.</param>
 /// <param name="ProcessName">The process name, for messages.</param>
 /// <param name="Folder">The folder to open, for <see cref="OpenFolderAction"/>.</param>
@@ -30,6 +32,9 @@ public sealed record ToastRequest(
 
     /// <summary>Suspend the top writer.</summary>
     public const string SuspendAction = "suspend";
+
+    /// <summary>Resume the process a confirmation toast is about.</summary>
+    public const string ResumeAction = "resume";
 
     /// <summary>Open the top writer's top folder.</summary>
     public const string OpenFolderAction = "openFolder";
@@ -63,12 +68,62 @@ public sealed record ToastRequest(
     }
 }
 
-/// <summary>Shows the alert toasts: one per pushed alert, or one summary for the unacknowledged alerts found on connect.</summary>
+/// <summary>The outcome of a process action started from a toast, for the toast that reports it.</summary>
+public sealed record ProcessActionToast
+{
+    /// <summary>Gets the action.</summary>
+    public required ProcessAction Action { get; init; }
+
+    /// <summary>Gets the process id.</summary>
+    public required int ProcessId { get; init; }
+
+    /// <summary>Gets the process start time, when known.</summary>
+    public required DateTimeOffset? ProcessStartTime { get; init; }
+
+    /// <summary>Gets the process name.</summary>
+    public required string ProcessName { get; init; }
+
+    /// <summary>Gets the alert the action came from, if any.</summary>
+    public required string? AlertId { get; init; }
+
+    /// <summary>Gets why the action failed, or null when it succeeded.</summary>
+    public required string? Error { get; init; }
+}
+
+/// <summary>
+/// Shows the toasts: one per pushed alert, replacing the previous one for the same drive; one summary for the unacknowledged
+/// alerts found on connect; and one per process action started from a toast, replacing the previous one for the same process.
+/// </summary>
 public static class AlertToasts
 {
+    /// <summary>The toast group of alert toasts, whose tag is the drive letter.</summary>
+    public const string AlertsGroup = "alerts";
+
+    /// <summary>The toast group of process action toasts, whose tag is "action-" and the process id.</summary>
+    public const string ActionsGroup = "actions";
+
     /// <summary>Shows a toast for a new alert: the reason, the top writer and its top folder, and Details / Suspend / Open folder.</summary>
     /// <param name="alert">The alert.</param>
-    public static void ShowAlert(Alert alert) => BuildAlert(alert).Show();
+    public static void ShowAlert(Alert alert) =>
+        BuildAlert(alert)
+            .Show(toast =>
+            {
+                toast.Tag = alert.Drive;
+                toast.Group = AlertsGroup;
+            });
+
+    /// <summary>
+    /// Shows the outcome of a process action started from a toast: "Suspended pwsh (pid 41372)" with Resume and Details, or the
+    /// error with Details.
+    /// </summary>
+    /// <param name="outcome">The outcome.</param>
+    public static void ShowProcessAction(ProcessActionToast outcome) =>
+        BuildProcessAction(outcome)
+            .Show(toast =>
+            {
+                toast.Tag = string.Create(CultureInfo.InvariantCulture, $"action-{outcome.ProcessId}");
+                toast.Group = ActionsGroup;
+            });
 
     /// <summary>Shows one toast for the unacknowledged alerts found on connect.</summary>
     /// <param name="count">How many alerts are unacknowledged.</param>
@@ -119,18 +174,7 @@ public static class AlertToasts
             return builder;
         }
 
-        ToastButton suspend = new ToastButton()
-            .SetContent($"Suspend {top.Name}")
-            .AddArgument(ToastRequest.ActionKey, ToastRequest.SuspendAction)
-            .AddArgument(ToastRequest.AlertIdKey, alert.Id)
-            .AddArgument(ToastRequest.ProcessIdKey, top.ProcessId)
-            .AddArgument(ToastRequest.ProcessNameKey, top.Name);
-        if (top.StartTime is DateTimeOffset start)
-        {
-            suspend.AddArgument(ToastRequest.StartTicksKey, start.UtcTicks.ToString(CultureInfo.InvariantCulture));
-        }
-
-        builder.AddButton(suspend);
+        builder.AddButton(ProcessButton($"Suspend {top.Name}", ToastRequest.SuspendAction, alert.Id, (top.ProcessId, top.Name, top.StartTime)));
         if (TopFolder(top) is string folder)
         {
             builder.AddButton(
@@ -142,6 +186,63 @@ public static class AlertToasts
         }
 
         return builder;
+    }
+
+    private static ToastContentBuilder BuildProcessAction(ProcessActionToast outcome)
+    {
+        ArgumentNullException.ThrowIfNull(outcome);
+        ToastContentBuilder builder = new ToastContentBuilder().AddArgument(ToastRequest.ActionKey, ToastRequest.DetailsAction);
+        ToastButton details = new ToastButton().SetContent("Details").AddArgument(ToastRequest.ActionKey, ToastRequest.DetailsAction);
+        if (outcome.AlertId is string alertId)
+        {
+            builder.AddArgument(ToastRequest.AlertIdKey, alertId);
+            details.AddArgument(ToastRequest.AlertIdKey, alertId);
+        }
+
+        if (outcome.Error is string error)
+        {
+            return builder
+                .AddText(ProcessActionText.Failed(outcome.Action, outcome.ProcessName, outcome.ProcessId))
+                .AddText(error)
+                .AddButton(details);
+        }
+
+        builder.AddText(ProcessActionText.Succeeded(outcome.Action, outcome.ProcessName, outcome.ProcessId));
+        if (outcome.Action == ProcessAction.Suspend)
+        {
+            builder
+                .AddText(ProcessActionText.SuspendedBody)
+                .AddButton(
+                    ProcessButton(
+                        "Resume",
+                        ToastRequest.ResumeAction,
+                        outcome.AlertId,
+                        (outcome.ProcessId, outcome.ProcessName, outcome.ProcessStartTime)
+                    )
+                );
+        }
+
+        return builder.AddButton(details);
+    }
+
+    private static ToastButton ProcessButton(string content, string action, string? alertId, (int Id, string Name, DateTimeOffset? StartTime) process)
+    {
+        ToastButton button = new ToastButton()
+            .SetContent(content)
+            .AddArgument(ToastRequest.ActionKey, action)
+            .AddArgument(ToastRequest.ProcessIdKey, process.Id)
+            .AddArgument(ToastRequest.ProcessNameKey, process.Name);
+        if (alertId is not null)
+        {
+            button.AddArgument(ToastRequest.AlertIdKey, alertId);
+        }
+
+        if (process.StartTime is DateTimeOffset start)
+        {
+            button.AddArgument(ToastRequest.StartTicksKey, start.UtcTicks.ToString(CultureInfo.InvariantCulture));
+        }
+
+        return button;
     }
 
     private static ProcessWriteReport? TopWriter(Alert alert) => alert.Processes.Count > 0 ? alert.Processes[0] : null;

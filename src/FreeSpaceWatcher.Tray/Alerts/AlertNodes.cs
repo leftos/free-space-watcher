@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.IO;
+using CommunityToolkit.Mvvm.ComponentModel;
 using FreeSpaceWatcher.Core.Alerts;
 using FreeSpaceWatcher.Core.Formatting;
 using FreeSpaceWatcher.Core.Ipc;
@@ -70,18 +71,43 @@ public sealed record AlertDetails
     }
 }
 
-/// <summary>A process in the details tree, with Suspend, Resume and Kill buttons.</summary>
-/// <param name="Report">What the process wrote.</param>
-/// <param name="Children">The "Folders" and "Files" groups.</param>
-public sealed record ProcessNode(ProcessWriteReport Report, IReadOnlyList<GroupNode> Children)
+/// <summary>A process in the details tree, with Suspend, Resume and Kill buttons, and its state as the service last reported it.</summary>
+/// <param name="report">What the process wrote.</param>
+/// <param name="children">The "Folders" and "Files" groups.</param>
+public sealed partial class ProcessNode(ProcessWriteReport report, IReadOnlyList<GroupNode> children) : ObservableObject
 {
-    /// <summary>Gets the node text: name, pid, bytes written, created and deleted counts.</summary>
+    /// <summary>Gets what the process wrote.</summary>
+    public ProcessWriteReport Report { get; } = report;
+
+    /// <summary>Gets the "Folders" and "Files" groups.</summary>
+    public IReadOnlyList<GroupNode> Children { get; } = children;
+
+    /// <summary>Gets or sets whether the process is running, suspended or gone; null until the service has said.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(Title), nameof(CanSuspend), nameof(CanResume))]
+    public partial ProcessState? State { get; set; }
+
+    /// <summary>Gets the node text: name, pid, bytes written, created and deleted counts, then " · Suspended" or " · Exited".</summary>
     public string Title =>
         string.Create(
             CultureInfo.CurrentCulture,
             $"{Report.Name} (pid {Report.ProcessId}) — {ByteFormat.Format(Report.BytesWritten)} written, "
-                + $"{Report.FilesCreated} created, {Report.FilesDeleted} deleted"
+                + $"{Report.FilesCreated} created, {Report.FilesDeleted} deleted{StateSuffix}"
         );
+
+    /// <summary>Gets whether Suspend is offered: not for a process that is already suspended or has exited.</summary>
+    public bool CanSuspend => State is not (ProcessState.Suspended or ProcessState.Exited);
+
+    /// <summary>Gets whether Resume is offered: only for a suspended process.</summary>
+    public bool CanResume => State == ProcessState.Suspended;
+
+    private string StateSuffix =>
+        State switch
+        {
+            ProcessState.Suspended => " · Suspended",
+            ProcessState.Exited => " · Exited",
+            _ => "",
+        };
 
     /// <summary>Builds the node and its groups.</summary>
     /// <param name="report">What the process wrote.</param>

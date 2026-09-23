@@ -9,6 +9,7 @@ public sealed class TriggerEvaluatorTests
     private const long MiB = 1L << 20;
     private const long GiB = 1L << 30;
     private const long TotalBytes = 1024 * GiB;
+    private const int RampStart = 60;
     private static readonly DateTimeOffset T0 = new(2026, 9, 23, 12, 0, 0, TimeSpan.Zero);
     private static readonly TimeSpan RateWindow = TimeSpan.FromSeconds(60);
     private static readonly TimeSpan Cooldown = TimeSpan.FromMinutes(10);
@@ -77,13 +78,51 @@ public sealed class TriggerEvaluatorTests
     }
 
     [Fact]
+    public void RampStart_FiresOnceInFirstMinute()
+    {
+        TriggerEvaluator evaluator = Create(ResolvedThresholds.Default);
+
+        Firings firings = Run(evaluator, 0, RampStart + 60, RampAfterBaseline(100 * GiB, 200 * MiB));
+
+        (int Index, TriggerFiring Firing) only = Assert.Single(firings);
+        Assert.Equal(TriggerKind.DropRate, only.Firing.Kind);
+        Assert.True(only.Index >= RampStart);
+    }
+
+    [Fact]
+    public void Escalation_After60s_StillFires()
+    {
+        TriggerEvaluator evaluator = Create(Only(TriggerKind.DropRate));
+
+        Firings firings = Run(evaluator, 0, RampStart + 120, RampAfterBaseline(100 * GiB, 200 * MiB));
+
+        Assert.Equal(2, firings.Count);
+        Assert.False(firings[0].Firing.IsEscalation);
+        Assert.True(firings[1].Firing.IsEscalation);
+        Assert.Equal(firings[0].Index + (int)TriggerEvaluator.MinEscalationGap.TotalSeconds, firings[1].Index);
+        Assert.True(firings[1].Firing.DropRateBytesPerSecond >= 2 * firings[0].Firing.DropRateBytesPerSecond);
+    }
+
+    [Fact]
+    public void TimeToFull_SuppressedAfterDropRate_WithinCooldown()
+    {
+        TriggerEvaluator evaluator = Create(ResolvedThresholds.Default);
+
+        Firings firings = Run(evaluator, 0, RampStart + 120, RampAfterBaseline(100 * GiB, 200 * MiB));
+
+        Assert.Contains(firings, f => f.Firing.Kind == TriggerKind.DropRate);
+        Assert.DoesNotContain(firings, f => f.Firing.Kind == TriggerKind.TimeToFull);
+        Assert.True(evaluator.CurrentTimeToFull < TimeSpan.FromMinutes(ResolvedThresholds.Default.TimeToFullMinutes));
+    }
+
+    [Fact]
     public void DoubledRate_EscalatesThroughCooldown()
     {
         TriggerEvaluator evaluator = Create(Only(TriggerKind.DropRate));
         Func<int, long> ramp = Losing(900 * GiB, 2 * GiB);
-        long at48 = ramp(48);
+        long at120 = ramp(120);
 
-        Firings firings = Run(evaluator, 0, 200, i => i <= 48 ? ramp(i) : at48 - 6 * GiB * (i - 48) / 60);
+        Firings firings = Run(evaluator, 0, 250, i => i <= 120 ? ramp(i) : at120 - 6 * GiB * (i - 120) / 60);
 
         Assert.Equal(2, firings.Count);
         Assert.Equal(48, firings[0].Index);
@@ -97,9 +136,9 @@ public sealed class TriggerEvaluatorTests
     {
         TriggerEvaluator evaluator = Create(Only(TriggerKind.TimeToFull));
         Func<int, long> ramp = Losing(20 * GiB, 2 * GiB);
-        long at48 = ramp(48);
+        long at120 = ramp(120);
 
-        Firings firings = Run(evaluator, 0, 150, i => i <= 48 ? ramp(i) : at48 - 8 * GiB * (i - 48) / 60);
+        Firings firings = Run(evaluator, 0, 200, i => i <= 120 ? ramp(i) : at120 - 8 * GiB * (i - 120) / 60);
 
         Assert.True(firings.Count >= 2);
         Assert.Equal(48, firings[0].Index);
@@ -228,6 +267,9 @@ public sealed class TriggerEvaluatorTests
         };
 
     private static Func<int, long> Losing(long start, long bytesPerMinute) => i => start - bytesPerMinute * i / 60;
+
+    private static Func<int, long> RampAfterBaseline(long start, long bytesPerSecond) =>
+        i => i < RampStart ? start : start - bytesPerSecond * (i - RampStart + 1);
 
     private static DriveSample Sample(int second, long freeBytes) => new(T0.AddSeconds(second), freeBytes, TotalBytes);
 

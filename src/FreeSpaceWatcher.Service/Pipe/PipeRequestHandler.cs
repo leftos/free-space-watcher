@@ -38,6 +38,7 @@ public sealed partial class PipeRequestHandler(
             GetAlertRequest get => new AlertResponse(history.Get(get.Id)),
             AckAlertRequest ack => new AckResponse(history.Acknowledge(ack.Id)),
             ProcessActionRequest action => processes.Handle(action, runAsClient),
+            GetProcessStatesRequest states => ProcessActions.QueryStates(states.ProcessIds),
             _ => new ErrorResponse($"'{request.GetType().Name}' is not a request the service handles."),
         };
         return response with { RequestId = request.RequestId };

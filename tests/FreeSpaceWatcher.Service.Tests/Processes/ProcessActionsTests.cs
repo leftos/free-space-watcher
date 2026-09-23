@@ -38,6 +38,84 @@ public sealed class ProcessActionsTests
     }
 
     [Fact]
+    public async Task SuspendTwice_ThenOneResume_Runs()
+    {
+        CancellationToken ct = TestContext.Current.CancellationToken;
+        await using PipeTestHarness harness = await PipeTestHarness.StartAsync(ct);
+        await using PipeTestClient client = await harness.ConnectAsync(ct);
+        using Process ping = StartPing();
+        try
+        {
+            DateTimeOffset started = new(ping.StartTime);
+
+            ProcessActionResponse first = await ActAsync(client, ping.Id, started, ProcessAction.Suspend, ct);
+            ProcessActionResponse second = await ActAsync(client, ping.Id, started, ProcessAction.Suspend, ct);
+            ProcessActionResponse resumed = await ActAsync(client, ping.Id, started, ProcessAction.Resume, ct);
+
+            Assert.True(first.Ok, first.Error);
+            Assert.True(second.Ok, second.Error);
+            Assert.True(resumed.Ok, resumed.Error);
+            Assert.Equal(ProcessState.Running, resumed.State);
+            Assert.DoesNotContain(Threads(ping), IsSuspended);
+        }
+        finally
+        {
+            StopIfRunning(ping);
+        }
+    }
+
+    [Fact]
+    public async Task Resume_OnRunningProcess_IsOkAndRunning()
+    {
+        CancellationToken ct = TestContext.Current.CancellationToken;
+        await using PipeTestHarness harness = await PipeTestHarness.StartAsync(ct);
+        await using PipeTestClient client = await harness.ConnectAsync(ct);
+        using Process ping = StartPing();
+        try
+        {
+            ProcessActionResponse resumed = await ActAsync(client, ping.Id, new DateTimeOffset(ping.StartTime), ProcessAction.Resume, ct);
+
+            Assert.True(resumed.Ok, resumed.Error);
+            Assert.Equal(ProcessState.Running, resumed.State);
+            Assert.DoesNotContain(Threads(ping), IsSuspended);
+        }
+        finally
+        {
+            StopIfRunning(ping);
+        }
+    }
+
+    [Fact]
+    public async Task Response_CarriesTheState()
+    {
+        CancellationToken ct = TestContext.Current.CancellationToken;
+        await using PipeTestHarness harness = await PipeTestHarness.StartAsync(ct);
+        await using PipeTestClient client = await harness.ConnectAsync(ct);
+        using Process ping = StartPing();
+        try
+        {
+            DateTimeOffset started = new(ping.StartTime);
+
+            ProcessActionResponse suspended = await ActAsync(client, ping.Id, started, ProcessAction.Suspend, ct);
+            ProcessStatesResponse whileSuspended = await StatesAsync(client, [ping.Id, ping.Id], ct);
+            ProcessActionResponse resumed = await ActAsync(client, ping.Id, started, ProcessAction.Resume, ct);
+            ProcessActionResponse killed = await ActAsync(client, ping.Id, started, ProcessAction.Kill, ct);
+            Assert.True(ping.WaitForExit(10_000));
+            ProcessStatesResponse afterKill = await StatesAsync(client, [ping.Id], ct);
+
+            Assert.Equal(ProcessState.Suspended, suspended.State);
+            Assert.Equal(ProcessState.Suspended, Assert.Single(whileSuspended.States).Value);
+            Assert.Equal(ProcessState.Running, resumed.State);
+            Assert.Equal(ProcessState.Exited, killed.State);
+            Assert.Equal(ProcessState.Exited, afterKill.States[ping.Id]);
+        }
+        finally
+        {
+            StopIfRunning(ping);
+        }
+    }
+
+    [Fact]
     public async Task OwnProcess_IsRefused()
     {
         CancellationToken ct = TestContext.Current.CancellationToken;
@@ -82,6 +160,9 @@ public sealed class ProcessActionsTests
         ProcessAction action,
         CancellationToken ct
     ) => client.RequestAsync<ProcessActionResponse>(new ProcessActionRequest(processId, startTime, action) { RequestId = 1 }, ct);
+
+    private static Task<ProcessStatesResponse> StatesAsync(PipeTestClient client, int[] processIds, CancellationToken ct) =>
+        client.RequestAsync<ProcessStatesResponse>(new GetProcessStatesRequest(processIds) { RequestId = 2 }, ct);
 
     private static Process StartPing()
     {

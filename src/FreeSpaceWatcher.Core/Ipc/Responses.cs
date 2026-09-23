@@ -83,7 +83,25 @@ public sealed record AckResponse(bool Ok) : PipeMessage;
 /// <param name="Ok">Whether the action succeeded.</param>
 /// <param name="AccessDenied">Whether it failed because the caller may not act on the process.</param>
 /// <param name="Error">What went wrong, when it failed.</param>
-public sealed record ProcessActionResponse(bool Ok, bool AccessDenied, string? Error) : PipeMessage;
+/// <param name="State">The process's state after the action, or null when the service refused to act on the process.</param>
+public sealed record ProcessActionResponse(bool Ok, bool AccessDenied, string? Error, ProcessState? State) : PipeMessage;
+
+/// <summary>Whether a process is running, suspended or gone.</summary>
+public enum ProcessState
+{
+    /// <summary>At least one thread is not suspended.</summary>
+    Running,
+
+    /// <summary>Every thread of the process is suspended.</summary>
+    Suspended,
+
+    /// <summary>The process is no longer running.</summary>
+    Exited,
+}
+
+/// <summary>The state of each process a <see cref="GetProcessStatesRequest"/> asked about.</summary>
+/// <param name="States">The state of each requested process id.</param>
+public sealed record ProcessStatesResponse(IReadOnlyDictionary<int, ProcessState> States) : PipeMessage;
 
 /// <summary>A new alert, pushed to subscribed clients.</summary>
 /// <param name="Alert">The alert.</param>

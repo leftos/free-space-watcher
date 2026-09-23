@@ -30,6 +30,10 @@ public interface ITrayShell
     /// <param name="count">How many alerts are unacknowledged.</param>
     void ShowSummaryToast(int count);
 
+    /// <summary>Shows the outcome of a process action started from a toast.</summary>
+    /// <param name="outcome">The outcome.</param>
+    void ShowProcessActionToast(ProcessActionToast outcome);
+
     /// <summary>Opens a folder in Explorer, reporting a failure to the user.</summary>
     /// <param name="folder">The folder.</param>
     void OpenFolder(string folder);
@@ -149,7 +153,10 @@ public sealed partial class TrayViewModel(IServiceChannel channel, ITrayShell sh
                 shell.OpenFolder(folder);
                 break;
             case ToastRequest.SuspendAction when request.ProcessId is int processId:
-                await SuspendFromToastAsync(request, processId);
+                await ActFromToastAsync(request, processId, ProcessAction.Suspend);
+                break;
+            case ToastRequest.ResumeAction when request.ProcessId is int processId:
+                await ActFromToastAsync(request, processId, ProcessAction.Resume);
                 break;
             default:
                 await shell.ShowAlertsAsync(null);
@@ -157,30 +164,39 @@ public sealed partial class TrayViewModel(IServiceChannel channel, ITrayShell sh
         }
     }
 
-    private async Task SuspendFromToastAsync(ToastRequest request, int processId)
+    private async Task ActFromToastAsync(ToastRequest request, int processId, ProcessAction action)
     {
-        string name = request.ProcessName ?? $"pid {processId}";
-        ProcessActionRequest action = new(processId, request.ProcessStartTime, ProcessAction.Suspend);
-        ProcessActionResponse? response;
+        string name = request.ProcessName ?? ProcessActionText.UnknownName;
+        ProcessActionRequest message = new(processId, request.ProcessStartTime, action);
+        string? error;
         try
         {
-            response = await channel.SendAsync<ProcessActionResponse>(action, CancellationToken.None);
+            ProcessActionResponse response = await ProcessActionSender.SendAsync(channel, message, name);
+            if (response.AccessDenied)
+            {
+                AlertsViewModel alerts = await shell.ShowAlertsAsync(request.AlertId);
+                await alerts.OfferElevationAsync(action, processId, request.ProcessStartTime, name);
+                return;
+            }
+
+            error = ProcessActionText.ErrorOf(response);
         }
         catch (Exception ex) when (PipeClient.IsRequestFailure(ex))
         {
-            shell.ShowError($"Suspend {name}", ex.Message);
-            return;
+            error = ex.Message;
         }
 
-        if (response.AccessDenied)
-        {
-            AlertsViewModel alerts = await shell.ShowAlertsAsync(request.AlertId);
-            alerts.OfferElevation(ProcessAction.Suspend, processId, request.ProcessStartTime, name);
-        }
-        else if (!response.Ok)
-        {
-            shell.ShowError($"Suspend {name}", response.Error ?? "The service could not suspend the process.");
-        }
+        shell.ShowProcessActionToast(
+            new ProcessActionToast
+            {
+                Action = action,
+                ProcessId = processId,
+                ProcessStartTime = request.ProcessStartTime,
+                ProcessName = name,
+                AlertId = request.AlertId,
+                Error = error,
+            }
+        );
     }
 
     private async Task<TResponse?> TrySendAsync<TResponse>(PipeMessage request)

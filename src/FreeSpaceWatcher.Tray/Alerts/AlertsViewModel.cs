@@ -6,12 +6,17 @@ using FreeSpaceWatcher.Tray.Pipe;
 
 namespace FreeSpaceWatcher.Tray.Alerts;
 
-/// <summary>The alerts window: history newest first, the selected alert's details, process actions and acknowledgement.</summary>
+/// <summary>
+/// The alerts window: history newest first, the selected alert's details with each process's state, process actions with the
+/// outcome of the last one, and acknowledgement.
+/// </summary>
 /// <param name="channel">The service connection.</param>
 /// <param name="dialogs">Confirmations and error messages.</param>
 /// <param name="shell">Explorer and the elevation helper.</param>
 public sealed partial class AlertsViewModel(IServiceChannel channel, IUserDialogs dialogs, IShellActions shell) : ObservableObject
 {
+    private string? _statusAlertId;
+
     /// <summary>Raised after an alert was acknowledged, so the tray can recount unacknowledged alerts.</summary>
     public event EventHandler? AlertsChanged;
 
@@ -31,6 +36,14 @@ public sealed partial class AlertsViewModel(IServiceChannel channel, IUserDialog
     [ObservableProperty]
     public partial string? ErrorMessage { get; private set; }
 
+    /// <summary>Gets the outcome of the last process action, shown under the details; cleared when another alert is selected.</summary>
+    [ObservableProperty]
+    public partial string? ActionStatus { get; private set; }
+
+    /// <summary>Gets whether <see cref="ActionStatus"/> reports a failure.</summary>
+    [ObservableProperty]
+    public partial bool ActionFailed { get; private set; }
+
     /// <summary>Reloads the history and selects an alert.</summary>
     /// <param name="alertId">The alert to select, or null to keep the current selection.</param>
     /// <returns>A task that completes when the list is loaded and the selection set.</returns>
@@ -43,7 +56,10 @@ public sealed partial class AlertsViewModel(IServiceChannel channel, IUserDialog
         }
     }
 
-    /// <summary>Asks the service to act on a process; when access is denied, offers to retry as administrator.</summary>
+    /// <summary>
+    /// Asks the service to act on a process and shows the outcome in the status line; when access is denied, offers to retry as
+    /// administrator. The process states are refreshed afterwards.
+    /// </summary>
     /// <param name="action">The action.</param>
     /// <param name="processId">The process id.</param>
     /// <param name="processStartTime">The process start time, when known.</param>
@@ -51,38 +67,52 @@ public sealed partial class AlertsViewModel(IServiceChannel channel, IUserDialog
     /// <returns>A task that completes when the action and any retry offer are done.</returns>
     public async Task RunProcessActionAsync(ProcessAction action, int processId, DateTimeOffset? processStartTime, string processName)
     {
-        ProcessActionResponse? response = await SendAsync<ProcessActionResponse>(new ProcessActionRequest(processId, processStartTime, action));
-        if (response is null || response.Ok)
+        string? alertId = SelectedAlert?.Summary.Id;
+        ProcessActionRequest request = new(processId, processStartTime, action);
+        ProcessActionResponse response;
+        try
         {
+            response = await ProcessActionSender.SendAsync(channel, request, processName);
+        }
+        catch (Exception ex) when (PipeClient.IsRequestFailure(ex))
+        {
+            ShowActionStatus(alertId, ProcessActionText.StatusLine(action, processName, processId, ex.Message), failed: true);
             return;
         }
 
+        ApplyState(processId, response.State);
         if (response.AccessDenied)
         {
-            OfferElevation(action, processId, processStartTime, processName);
+            await OfferElevationAsync(action, processId, processStartTime, processName);
             return;
         }
 
-        ErrorMessage = $"{action} {processName} (pid {processId}) failed: {response.Error}";
+        string? error = ProcessActionText.ErrorOf(response);
+        ShowActionStatus(alertId, ProcessActionText.StatusLine(action, processName, processId, error), failed: error is not null);
+        await RefreshProcessStatesAsync();
     }
 
-    /// <summary>Offers "Retry as administrator" for an action the service was denied, and runs the elevation helper on yes.</summary>
+    /// <summary>
+    /// Offers "Retry as administrator" for an action the service was denied, and runs the elevation helper on yes; a refusal or
+    /// the helper's error goes to the status line, and the process states are refreshed after the helper ran.
+    /// </summary>
     /// <param name="action">The action.</param>
     /// <param name="processId">The process id.</param>
     /// <param name="processStartTime">The process start time, when known.</param>
     /// <param name="processName">The process name, for the question.</param>
-    public void OfferElevation(ProcessAction action, int processId, DateTimeOffset? processStartTime, string processName)
+    /// <returns>A task that completes when the offer, the helper and the state refresh are done.</returns>
+    public async Task OfferElevationAsync(ProcessAction action, int processId, DateTimeOffset? processStartTime, string processName)
     {
         string question = $"Access to {processName} (pid {processId}) was denied. Retry as administrator?";
         if (!dialogs.Confirm($"{action} {processName}", question))
         {
+            ShowActionStatus(SelectedAlert?.Summary.Id, ProcessActionText.Denied(processName, processId), failed: true);
             return;
         }
 
-        if (shell.RunElevated(action, processId, processStartTime) is string error)
-        {
-            dialogs.ShowError("Retry as administrator", error);
-        }
+        string? error = shell.RunElevated(action, processId, processStartTime);
+        ShowActionStatus(SelectedAlert?.Summary.Id, error, failed: error is not null);
+        await RefreshProcessStatesAsync();
     }
 
     [RelayCommand]
@@ -104,7 +134,16 @@ public sealed partial class AlertsViewModel(IServiceChannel channel, IUserDialog
         SelectedAlert = selectedId is null ? null : Alerts.FirstOrDefault(a => a.Summary.Id == selectedId);
     }
 
-    partial void OnSelectedAlertChanged(AlertListItem? value) => _ = LoadDetailsAsync(value?.Summary.Id);
+    partial void OnSelectedAlertChanged(AlertListItem? value)
+    {
+        if (value is not null && value.Summary.Id != _statusAlertId)
+        {
+            ActionStatus = null;
+            ActionFailed = false;
+        }
+
+        _ = LoadDetailsAsync(value?.Summary.Id);
+    }
 
     private async Task LoadDetailsAsync(string? alertId)
     {
@@ -124,7 +163,55 @@ public sealed partial class AlertsViewModel(IServiceChannel channel, IUserDialog
         if (response.Alert is null)
         {
             ErrorMessage = $"Alert {alertId} is no longer in the history.";
+            return;
         }
+
+        await RefreshProcessStatesAsync();
+    }
+
+    private async Task RefreshProcessStatesAsync()
+    {
+        if (Details is not { Processes.Count: > 0 } details)
+        {
+            return;
+        }
+
+        int[] processIds = [.. details.Processes.Select(p => p.Report.ProcessId).Distinct()];
+        ProcessStatesResponse? response = await SendAsync<ProcessStatesResponse>(new GetProcessStatesRequest(processIds));
+        if (response is null)
+        {
+            return;
+        }
+
+        foreach (ProcessNode node in details.Processes)
+        {
+            node.State = response.States.TryGetValue(node.Report.ProcessId, out ProcessState state) ? state : null;
+        }
+    }
+
+    private void ApplyState(int processId, ProcessState? state)
+    {
+        if (state is null || Details is null)
+        {
+            return;
+        }
+
+        foreach (ProcessNode node in Details.Processes.Where(p => p.Report.ProcessId == processId))
+        {
+            node.State = state;
+        }
+    }
+
+    private void ShowActionStatus(string? alertId, string? text, bool failed)
+    {
+        if (SelectedAlert?.Summary.Id != alertId)
+        {
+            return;
+        }
+
+        _statusAlertId = alertId;
+        ActionStatus = text;
+        ActionFailed = failed;
     }
 
     private bool CanAcknowledge() => Details is { Acknowledged: false };

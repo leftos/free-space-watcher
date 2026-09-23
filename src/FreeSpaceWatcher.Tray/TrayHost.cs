@@ -97,6 +97,9 @@ public sealed class TrayHost : ITrayShell, IDisposable
     public void ShowSummaryToast(int count) => AlertToasts.ShowSummary(count);
 
     /// <inheritdoc/>
+    public void ShowProcessActionToast(ProcessActionToast outcome) => AlertToasts.ShowProcessAction(outcome);
+
+    /// <inheritdoc/>
     public void OpenFolder(string folder)
     {
         if (_shellActions.OpenFolder(folder) is string error)

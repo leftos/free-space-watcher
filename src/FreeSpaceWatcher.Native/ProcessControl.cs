@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Globalization;
 using System.Runtime.InteropServices;
 using Microsoft.Win32.SafeHandles;
@@ -17,6 +18,19 @@ public enum ProcessControlAction
 
     /// <summary>Terminate the process with exit code 1.</summary>
     Terminate,
+}
+
+/// <summary>Whether a process is running, suspended or gone, as <see cref="ProcessControl.QueryRunState"/> reads it.</summary>
+public enum ProcessRunState
+{
+    /// <summary>At least one thread is not suspended.</summary>
+    Running,
+
+    /// <summary>The process has threads, and every one of them waits because it is suspended.</summary>
+    Suspended,
+
+    /// <summary>No process with the id is running, or it has no threads left.</summary>
+    Exited,
 }
 
 /// <summary>The outcome of a native process call.</summary>
@@ -40,7 +54,15 @@ public static class ProcessControl
     private const int ShortPathCapacity = 1024;
     private const int LongPathCapacity = 32_768;
 
+    /// <summary>The most resume calls <see cref="Apply"/> makes before it reports a process that stays suspended.</summary>
+    public const int MaxResumeCalls = 32;
+
     /// <summary>Opens the process and applies <paramref name="action"/> to it.</summary>
+    /// <remarks>
+    /// Suspending an already suspended process does nothing and succeeds, so the per-thread suspend count never climbs above
+    /// one through this call. Resuming calls the kernel until the process is no longer suspended, at most
+    /// <see cref="MaxResumeCalls"/> times, so a process suspended several times by other tools runs again after one resume.
+    /// </remarks>
     /// <param name="processId">The process id.</param>
     /// <param name="action">What to do.</param>
     /// <returns>Whether it worked, and why not when it did not.</returns>
@@ -55,13 +77,54 @@ public static class ProcessControl
 
         return action switch
         {
-            ProcessControlAction.Suspend => FromStatus(NativeMethods.NtSuspendProcess(handle), "suspend", processId),
-            ProcessControlAction.Resume => FromStatus(NativeMethods.NtResumeProcess(handle), "resume", processId),
+            ProcessControlAction.Suspend => QueryRunState(processId) == ProcessRunState.Suspended
+                ? ProcessControlResult.Success
+                : FromStatus(NativeMethods.NtSuspendProcess(handle), "suspend", processId),
+            ProcessControlAction.Resume => ResumeFully(handle, processId),
             ProcessControlAction.Terminate => NativeMethods.TerminateProcess(handle, 1)
                 ? ProcessControlResult.Success
                 : FromWin32(Marshal.GetLastPInvokeError(), "terminate", processId),
             _ => throw new ArgumentOutOfRangeException(nameof(action), action, "Unknown process action."),
         };
+    }
+
+    /// <summary>Reads whether a process is running, suspended or gone, from the system's thread list; needs no access to the process.</summary>
+    /// <param name="processId">The process id.</param>
+    /// <returns>
+    /// <see cref="ProcessRunState.Suspended"/> when the process has threads and all of them wait suspended,
+    /// <see cref="ProcessRunState.Exited"/> when no such process runs or it has no threads, and <see cref="ProcessRunState.Running"/> otherwise.
+    /// </returns>
+    public static ProcessRunState QueryRunState(int processId)
+    {
+        try
+        {
+            using var process = Process.GetProcessById(processId);
+            ProcessThreadCollection threads = process.Threads;
+            if (threads.Count == 0)
+            {
+                return ProcessRunState.Exited;
+            }
+
+            foreach (ProcessThread thread in threads)
+            {
+                if (thread.ThreadState != System.Diagnostics.ThreadState.Wait || thread.WaitReason != ThreadWaitReason.Suspended)
+                {
+                    return ProcessRunState.Running;
+                }
+            }
+
+            return ProcessRunState.Suspended;
+        }
+        catch (ArgumentException)
+        {
+            // GetProcessById throws ArgumentException when no process has the id.
+            return ProcessRunState.Exited;
+        }
+        catch (InvalidOperationException)
+        {
+            // The process exited between the lookup and the thread read.
+            return ProcessRunState.Exited;
+        }
     }
 
     /// <summary>Reads a process's start time and whether it is critical.</summary>
@@ -118,6 +181,27 @@ public static class ProcessControl
         }
 
         return null;
+    }
+
+    private static ProcessControlResult ResumeFully(SafeProcessHandle handle, int processId)
+    {
+        for (int calls = 1; ; calls++)
+        {
+            ProcessControlResult result = FromStatus(NativeMethods.NtResumeProcess(handle), "resume", processId);
+            if (!result.Ok || QueryRunState(processId) != ProcessRunState.Suspended)
+            {
+                return result;
+            }
+
+            if (calls == MaxResumeCalls)
+            {
+                return new ProcessControlResult(
+                    false,
+                    false,
+                    Invariant($"Process {processId} is still suspended after {MaxResumeCalls} resume calls.")
+                );
+            }
+        }
     }
 
     private static ProcessControlResult OpenFailure(int processId, int error) =>

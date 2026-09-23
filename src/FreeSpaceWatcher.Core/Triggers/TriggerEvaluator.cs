@@ -7,19 +7,28 @@ namespace FreeSpaceWatcher.Core.Triggers;
 /// <summary>Decides, sample by sample, which of one drive's triggers fire.</summary>
 /// <remarks>
 /// The drop rate is the least-squares slope of free space over the samples inside the rate window, and is only known once
-/// those samples span at least 80 % of the window. Each trigger except the floor has a cooldown that an escalation bypasses;
-/// the floor fires once and re-arms when free space climbs back above the floor by 10 %.
+/// those samples span at least 80 % of the window. Each trigger except the floor has a cooldown that an escalation bypasses.
+/// The drop-rate and time-to-full triggers share one cooldown clock, so when either fires the other's cooldown starts too from the
+/// next sample on (both may fire on the same sample, which the alert engine merges into one alert), and an
+/// escalation of either needs at least <see cref="MinEscalationGap"/> since that trigger's own last firing: while a ramp fills the
+/// rate window the fitted slope keeps climbing, and without the gap one ramp would raise an alert every few seconds. The
+/// process-write trigger keeps its own cooldown and escalates at once. The floor fires once and re-arms when free space climbs
+/// back above the floor by 10 %.
 /// </remarks>
 /// <param name="driveLetter">The drive letter, used in the reason sentences.</param>
 /// <param name="thresholds">Returns the drive's current thresholds; called on every sample so configuration changes apply at once.</param>
 /// <param name="rateWindow">The window the drop rate is fitted over.</param>
-/// <param name="cooldown">The minimum time between two firings of the same trigger, escalations aside.</param>
+/// <param name="cooldown">The minimum time between two firings of the same trigger (or of the two rate triggers), escalations aside.</param>
 public sealed class TriggerEvaluator(string driveLetter, Func<ResolvedThresholds> thresholds, TimeSpan rateWindow, TimeSpan cooldown)
 {
+    /// <summary>The least time between a drop-rate or time-to-full firing and an escalation of the same trigger.</summary>
+    public static readonly TimeSpan MinEscalationGap = TimeSpan.FromSeconds(60);
+
     private const double FloorReArmFactor = 1.10;
     private readonly string _label = WatcherConfig.NormalizeLetter(driveLetter) + ":";
     private readonly List<DriveSample> _samples = [];
     private readonly Dictionary<TriggerKind, LastFiring> _lastFirings = [];
+    private DateTimeOffset? _rateTriggersLastFired;
     private bool _floorArmed = true;
 
     private enum FiringMode
@@ -50,6 +59,11 @@ public sealed class TriggerEvaluator(string driveLetter, Func<ResolvedThresholds
         List<TriggerFiring> firings = [];
         EvaluateDropRate(sample.Time, limits, firings);
         EvaluateTimeToFull(sample.Time, limits, firings);
+        if (firings.Count > 0)
+        {
+            _rateTriggersLastFired = sample.Time;
+        }
+
         EvaluateFloor(sample, limits, firings);
         EvaluateProcessWrite(sample.Time, limits, writes, firings);
         return firings;
@@ -117,7 +131,7 @@ public sealed class TriggerEvaluator(string driveLetter, Func<ResolvedThresholds
             return;
         }
 
-        FiringMode mode = Gate(TriggerKind.DropRate, now, last => rate >= 2 * last.DropRate);
+        FiringMode mode = RateGate(TriggerKind.DropRate, now, last => rate >= 2 * last.DropRate);
         if (mode != FiringMode.Suppressed)
         {
             firings.Add(Fire(TriggerKind.DropRate, now, mode, RateReason(rate, CurrentTimeToFull), null));
@@ -136,7 +150,7 @@ public sealed class TriggerEvaluator(string driveLetter, Func<ResolvedThresholds
             return;
         }
 
-        FiringMode mode = Gate(TriggerKind.TimeToFull, now, last => last.TimeToFull is TimeSpan previous && timeToFull <= previous / 2);
+        FiringMode mode = RateGate(TriggerKind.TimeToFull, now, last => last.TimeToFull is TimeSpan previous && timeToFull <= previous / 2);
         if (mode != FiringMode.Suppressed)
         {
             firings.Add(Fire(TriggerKind.TimeToFull, now, mode, RateReason(rate, timeToFull), null));
@@ -207,6 +221,18 @@ public sealed class TriggerEvaluator(string driveLetter, Func<ResolvedThresholds
         }
 
         return escalates(last) ? FiringMode.Escalate : FiringMode.Suppressed;
+    }
+
+    private FiringMode RateGate(TriggerKind kind, DateTimeOffset now, Func<LastFiring, bool> escalates)
+    {
+        if (_rateTriggersLastFired is not DateTimeOffset lastRateFiring || now - lastRateFiring >= cooldown)
+        {
+            return FiringMode.Fire;
+        }
+
+        return _lastFirings.TryGetValue(kind, out LastFiring? last) && now - last.Time >= MinEscalationGap && escalates(last)
+            ? FiringMode.Escalate
+            : FiringMode.Suppressed;
     }
 
     private TriggerFiring Fire(TriggerKind kind, DateTimeOffset now, FiringMode mode, string reason, ProcessWriteTotal? process)

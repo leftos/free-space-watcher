@@ -44,3 +44,7 @@ public enum ProcessAction
 /// <param name="ProcessStartTime">The process start time, when known, so a reused pid is not acted on.</param>
 /// <param name="Action">The action.</param>
 public sealed record ProcessActionRequest(int ProcessId, DateTimeOffset? ProcessStartTime, ProcessAction Action) : PipeMessage;
+
+/// <summary>Asks whether each of some processes is running, suspended or gone.</summary>
+/// <param name="ProcessIds">The process ids.</param>
+public sealed record GetProcessStatesRequest(IReadOnlyList<int> ProcessIds) : PipeMessage;

@@ -19,12 +19,14 @@
         <Button
           Style="{StaticResource NodeButton}"
           Content="Suspend"
+          IsEnabled="{Binding CanSuspend}"
           Command="{Binding DataContext.SuspendCommand, RelativeSource={RelativeSource AncestorType=Window}}"
           CommandParameter="{Binding}"
         />
         <Button
           Style="{StaticResource NodeButton}"
           Content="Resume"
+          IsEnabled="{Binding CanResume}"
           Command="{Binding DataContext.ResumeCommand, RelativeSource={RelativeSource AncestorType=Window}}"
           CommandParameter="{Binding}"
         />
@@ -144,6 +146,20 @@
             Command="{Binding AcknowledgeCommand}"
           />
         </Grid>
+        <TextBlock DockPanel.Dock="Bottom" Margin="0,6,0,0" TextWrapping="Wrap" Text="{Binding ActionStatus}">
+          <TextBlock.Style>
+            <Style TargetType="TextBlock">
+              <Style.Triggers>
+                <DataTrigger Binding="{Binding ActionStatus}" Value="{x:Null}">
+                  <Setter Property="Visibility" Value="Collapsed" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding ActionFailed}" Value="True">
+                  <Setter Property="Foreground" Value="Firebrick" />
+                </DataTrigger>
+              </Style.Triggers>
+            </Style>
+          </TextBlock.Style>
+        </TextBlock>
         <TreeView ItemsSource="{Binding Details.Processes}" />
       </DockPanel>
     </Grid>
