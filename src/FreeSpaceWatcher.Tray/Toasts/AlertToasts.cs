@@ -93,6 +93,7 @@ public sealed record ProcessActionToast
 /// <summary>
 /// Shows the toasts: one per pushed alert, replacing the previous one for the same drive; one summary for the unacknowledged
 /// alerts found on connect; and one per process action started from a toast, replacing the previous one for the same process.
+/// Removes alert toasts from Action Center once their alerts are acknowledged or deleted.
 /// </summary>
 public static class AlertToasts
 {
@@ -133,6 +134,33 @@ public static class AlertToasts
             .AddText(SummaryText(count))
             .AddButton(new ToastButton().SetContent("Details").AddArgument(ToastRequest.ActionKey, ToastRequest.SummaryAction))
             .Show();
+
+    /// <summary>Removes every alert toast from Action Center.</summary>
+    public static void RemoveAll() => ToastNotificationManagerCompat.History.RemoveGroup(AlertsGroup);
+
+    /// <summary>Removes one drive's alert toast from Action Center.</summary>
+    /// <param name="drive">The drive letter the toast is tagged with.</param>
+    public static void RemoveForDrive(string drive) => ToastNotificationManagerCompat.History.Remove(drive, AlertsGroup);
+
+    /// <summary>Picks the drives whose alert toast goes after a change: each drive that lost an alert and has no unacknowledged alert left.</summary>
+    /// <param name="before">The alerts before the change.</param>
+    /// <param name="after">The alerts after the change.</param>
+    /// <returns>The drive letters, as the alerts name them.</returns>
+    public static IReadOnlyList<string> DrivesToClear(IReadOnlyList<AlertSummary> before, IReadOnlyList<AlertSummary> after)
+    {
+        ArgumentNullException.ThrowIfNull(before);
+        ArgumentNullException.ThrowIfNull(after);
+        HashSet<string> remainingIds = new(after.Select(a => a.Id), StringComparer.Ordinal);
+        HashSet<string> alertingDrives = new(after.Where(a => !a.Acknowledged).Select(a => a.Drive), StringComparer.OrdinalIgnoreCase);
+        return
+        [
+            .. before
+                .Where(a => !remainingIds.Contains(a.Id))
+                .Select(a => a.Drive)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Where(drive => !alertingDrives.Contains(drive)),
+        ];
+    }
 
     /// <summary>Formats the summary toast's text, e.g. "3 unacknowledged disk alerts".</summary>
     /// <param name="count">How many alerts are unacknowledged.</param>

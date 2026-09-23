@@ -34,6 +34,13 @@ public interface ITrayShell
     /// <param name="outcome">The outcome.</param>
     void ShowProcessActionToast(ProcessActionToast outcome);
 
+    /// <summary>Removes every alert toast from Action Center.</summary>
+    void RemoveAlertToasts();
+
+    /// <summary>Removes one drive's alert toast from Action Center.</summary>
+    /// <param name="drive">The drive letter the toast is tagged with.</param>
+    void RemoveAlertToast(string drive);
+
     /// <summary>Opens a folder in Explorer, reporting a failure to the user.</summary>
     /// <param name="folder">The folder.</param>
     void OpenFolder(string folder);
@@ -55,15 +62,18 @@ public sealed partial class TrayViewModel(IServiceChannel channel, ITrayShell sh
 {
     private StatusResponse? _status;
     private WatcherConfig? _config;
+    private IReadOnlyList<AlertSummary>? _alerts;
 
     /// <summary>Gets whether the service is connected.</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(State), nameof(ToolTipText))]
+    [NotifyCanExecuteChangedFor(nameof(AcknowledgeAllCommand))]
     public partial bool IsConnected { get; private set; }
 
     /// <summary>Gets how many alerts are unacknowledged.</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(State))]
+    [NotifyCanExecuteChangedFor(nameof(AcknowledgeAllCommand))]
     public partial int UnacknowledgedCount { get; private set; }
 
     /// <summary>Gets what the icon shows.</summary>
@@ -113,6 +123,38 @@ public sealed partial class TrayViewModel(IServiceChannel channel, ITrayShell sh
         await RefreshUnacknowledgedAsync();
     }
 
+    /// <summary>
+    /// Recounts the unacknowledged alerts after alerts were acknowledged or deleted, and removes the alert toasts that no longer
+    /// apply: all of them when nothing is unacknowledged, otherwise the toast of each drive that lost an alert and has no
+    /// unacknowledged alert left.
+    /// </summary>
+    /// <returns>A task that completes when the count and the toasts are updated.</returns>
+    public async Task OnAlertsChangedAsync()
+    {
+        IReadOnlyList<AlertSummary>? before = _alerts;
+        int unacknowledged = await RefreshUnacknowledgedAsync();
+        if (_alerts is not { } after || ReferenceEquals(before, after))
+        {
+            return;
+        }
+
+        if (unacknowledged == 0)
+        {
+            shell.RemoveAlertToasts();
+            return;
+        }
+
+        if (before is null)
+        {
+            return;
+        }
+
+        foreach (string drive in AlertToasts.DrivesToClear(before, after))
+        {
+            shell.RemoveAlertToast(drive);
+        }
+    }
+
     /// <summary>Reloads the configuration, whose noise floors decide what the tooltip shows.</summary>
     /// <returns>A task that completes when the configuration is loaded or the load failed.</returns>
     public async Task LoadConfigAsync()
@@ -132,6 +174,7 @@ public sealed partial class TrayViewModel(IServiceChannel channel, ITrayShell sh
         AlertListResponse? response = await TrySendAsync<AlertListResponse>(new ListAlertsRequest());
         if (response is not null)
         {
+            _alerts = response.Alerts;
             UnacknowledgedCount = response.Alerts.Count(a => !a.Acknowledged);
         }
 
@@ -212,6 +255,11 @@ public sealed partial class TrayViewModel(IServiceChannel channel, ITrayShell sh
             return null;
         }
     }
+
+    private bool CanAcknowledgeAll() => IsConnected && UnacknowledgedCount > 0;
+
+    [RelayCommand(CanExecute = nameof(CanAcknowledgeAll))]
+    private async Task AcknowledgeAllAsync() => await TrySendAsync<AckResponse>(new AckAlertsRequest(null));
 
     [RelayCommand]
     private async Task ShowAlertsAsync() => await shell.ShowAlertsAsync(null);

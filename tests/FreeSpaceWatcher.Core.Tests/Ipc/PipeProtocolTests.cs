@@ -106,7 +106,8 @@ public sealed class PipeProtocolTests
             new SubscribeRequest { RequestId = 4 },
             new ListAlertsRequest { RequestId = 5 },
             new GetAlertRequest(alert.Id) { RequestId = 6 },
-            new AckAlertRequest(alert.Id) { RequestId = 7 },
+            new AckAlertsRequest([alert.Id, "20260923-141600-D-Floor"]) { RequestId = 7 },
+            new DeleteAlertsRequest(null) { RequestId = 11 },
             new ProcessActionRequest(1234, T0, ProcessAction.Suspend) { RequestId = 8 },
             new GetProcessStatesRequest([1234, 5678]) { RequestId = 10 },
             status,
@@ -114,13 +115,15 @@ public sealed class PipeProtocolTests
             new SetConfigResponse(false, ["History days must be at least 1 (got 0)."]) { RequestId = 3 },
             new AlertListResponse([summary]) { RequestId = 5 },
             new AlertResponse(alert) { RequestId = 6 },
-            new AckResponse(true) { RequestId = 7 },
+            new AckResponse(2) { RequestId = 7 },
+            new DeleteAlertsResponse(3) { RequestId = 11 },
             new ProcessActionResponse(false, true, "Access is denied.", ProcessState.Suspended) { RequestId = 8 },
             new ProcessStatesResponse(new Dictionary<int, ProcessState> { [1234] = ProcessState.Running, [5678] = ProcessState.Exited })
             {
                 RequestId = 10,
             },
             new AlertPush(alert),
+            new AlertsChangedPush(),
             new StatusPush(status with { RequestId = 0 }),
             new ErrorResponse("Unknown request") { RequestId = 9 },
         ];

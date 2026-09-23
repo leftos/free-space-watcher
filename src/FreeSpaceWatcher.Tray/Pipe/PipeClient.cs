@@ -39,6 +39,9 @@ public sealed class PipeClient(string pipeName, TimeSpan requestTimeout) : IServ
     /// <summary>Raised with every alert the service pushes.</summary>
     public event EventHandler<Alert>? AlertReceived;
 
+    /// <summary>Raised when the service reports that alerts were acknowledged or deleted.</summary>
+    public event EventHandler? AlertsChanged;
+
     /// <summary>Raised with true once connected and subscribed, and with false when that connection is lost.</summary>
     public event EventHandler<bool>? ConnectionChanged;
 
@@ -231,6 +234,9 @@ public sealed class PipeClient(string pipeName, TimeSpan requestTimeout) : IServ
                 break;
             case AlertPush push:
                 AlertReceived?.Invoke(this, push.Alert);
+                break;
+            case AlertsChangedPush:
+                AlertsChanged?.Invoke(this, EventArgs.Empty);
                 break;
             default:
                 if (_pending.TryRemove(message.RequestId, out TaskCompletionSource<PipeMessage>? reply))

@@ -75,9 +75,13 @@ public sealed record AlertSummary
 /// <param name="Alert">The alert, or null when no alert has the requested id.</param>
 public sealed record AlertResponse(Alert? Alert) : PipeMessage;
 
-/// <summary>The outcome of an acknowledgement.</summary>
-/// <param name="Ok">Whether the alert exists and is now acknowledged.</param>
-public sealed record AckResponse(bool Ok) : PipeMessage;
+/// <summary>The outcome of an <see cref="AckAlertsRequest"/>.</summary>
+/// <param name="Count">How many alerts changed from unacknowledged to acknowledged.</param>
+public sealed record AckResponse(int Count) : PipeMessage;
+
+/// <summary>The outcome of a <see cref="DeleteAlertsRequest"/>.</summary>
+/// <param name="Count">How many alerts were deleted.</param>
+public sealed record DeleteAlertsResponse(int Count) : PipeMessage;
 
 /// <summary>The outcome of a process action.</summary>
 /// <param name="Ok">Whether the action succeeded.</param>
@@ -106,6 +110,9 @@ public sealed record ProcessStatesResponse(IReadOnlyDictionary<int, ProcessState
 /// <summary>A new alert, pushed to subscribed clients.</summary>
 /// <param name="Alert">The alert.</param>
 public sealed record AlertPush(Alert Alert) : PipeMessage;
+
+/// <summary>Pushed to subscribed clients after an acknowledgement or deletion changed the alert history.</summary>
+public sealed record AlertsChangedPush : PipeMessage;
 
 /// <summary>Live status, pushed to subscribed clients every second.</summary>
 /// <param name="Status">The status.</param>

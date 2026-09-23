@@ -11,9 +11,9 @@ namespace FreeSpaceWatcher.Service.Pipe;
 /// <summary>Answers one pipe request; subscriptions are the pipe server's, since they belong to the connection.</summary>
 /// <param name="config">Answers configuration reads and changes.</param>
 /// <param name="history">Answers alert history requests.</param>
-/// <param name="hub">Supplies the latest status.</param>
+/// <param name="hub">Supplies the latest status, and tells subscribers when an acknowledgement or deletion changed the history.</param>
 /// <param name="processes">Handles process actions.</param>
-/// <param name="logger">Receives configuration saves that fail.</param>
+/// <param name="logger">Receives configuration saves that fail, acknowledgements and deletions.</param>
 public sealed partial class PipeRequestHandler(
     ConfigService config,
     HistoryStore history,
@@ -36,7 +36,8 @@ public sealed partial class PipeRequestHandler(
             SetConfigRequest set => SetConfig(set.Config),
             ListAlertsRequest => new AlertListResponse([.. history.List().Select(Summarize)]),
             GetAlertRequest get => new AlertResponse(history.Get(get.Id)),
-            AckAlertRequest ack => new AckResponse(history.Acknowledge(ack.Id)),
+            AckAlertsRequest ack => new AckResponse(Acknowledge(ack.Ids)),
+            DeleteAlertsRequest delete => new DeleteAlertsResponse(Delete(delete.Ids)),
             ProcessActionRequest action => processes.Handle(action, runAsClient),
             GetProcessStatesRequest states => ProcessActions.QueryStates(states.ProcessIds),
             _ => new ErrorResponse($"'{request.GetType().Name}' is not a request the service handles."),
@@ -55,6 +56,30 @@ public sealed partial class PipeRequestHandler(
             Acknowledged = alert.Acknowledged,
         };
 
+    private int Acknowledge(IReadOnlyList<string>? ids)
+    {
+        int count = history.Acknowledge(ids);
+        LogAcknowledged(logger, count);
+        PublishIfChanged(count);
+        return count;
+    }
+
+    private int Delete(IReadOnlyList<string>? ids)
+    {
+        int count = history.Delete(ids);
+        LogDeleted(logger, count);
+        PublishIfChanged(count);
+        return count;
+    }
+
+    private void PublishIfChanged(int count)
+    {
+        if (count > 0)
+        {
+            hub.PublishAlertsChanged();
+        }
+    }
+
     private SetConfigResponse SetConfig(WatcherConfig newConfig)
     {
         try
@@ -71,4 +96,10 @@ public sealed partial class PipeRequestHandler(
 
     [LoggerMessage(EventId = 1400, Level = LogLevel.Warning, Message = "Saving the configuration failed")]
     private static partial void LogSaveFailed(ILogger logger, Exception exception);
+
+    [LoggerMessage(EventId = 1408, Level = LogLevel.Information, Message = "Acknowledged {Count} alerts")]
+    private static partial void LogAcknowledged(ILogger logger, int count);
+
+    [LoggerMessage(EventId = 1409, Level = LogLevel.Information, Message = "Deleted {Count} alerts")]
+    private static partial void LogDeleted(ILogger logger, int count);
 }

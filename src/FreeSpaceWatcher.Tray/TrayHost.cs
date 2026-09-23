@@ -47,6 +47,7 @@ public sealed class TrayHost : ITrayShell, IDisposable
         _client.ConnectionChanged += (_, connected) => Post(() => OnConnectionChangedAsync(connected));
         _client.StatusReceived += (_, status) => Post(() => OnStatus(status));
         _client.AlertReceived += (_, alert) => Post(() => OnAlertAsync(alert));
+        _client.AlertsChanged += (_, _) => Post(OnAlertsChangedAsync);
         ToastNotificationManagerCompat.OnActivated += OnToastActivated;
         _taskbarIcon.ForceCreate(enablesEfficiencyMode: false);
         UpdateIcon();
@@ -59,7 +60,6 @@ public sealed class TrayHost : ITrayShell, IDisposable
         if (_alertsWindow?.DataContext is not AlertsViewModel viewModel)
         {
             viewModel = new AlertsViewModel(_client, _dialogs, _shellActions);
-            viewModel.AlertsChanged += (_, _) => Post(_tray.RefreshUnacknowledgedAsync);
             _alertsWindow = new AlertsWindow { DataContext = viewModel };
             _alertsWindow.Closed += (_, _) => _alertsWindow = null;
             _alertsWindow.Show();
@@ -100,6 +100,12 @@ public sealed class TrayHost : ITrayShell, IDisposable
     public void ShowProcessActionToast(ProcessActionToast outcome) => AlertToasts.ShowProcessAction(outcome);
 
     /// <inheritdoc/>
+    public void RemoveAlertToasts() => AlertToasts.RemoveAll();
+
+    /// <inheritdoc/>
+    public void RemoveAlertToast(string drive) => AlertToasts.RemoveForDrive(drive);
+
+    /// <inheritdoc/>
     public void OpenFolder(string folder)
     {
         if (_shellActions.OpenFolder(folder) is string error)
@@ -135,6 +141,7 @@ public sealed class TrayHost : ITrayShell, IDisposable
     private TaskbarIcon CreateTaskbarIcon()
     {
         ContextMenu menu = new();
+        menu.Items.Add(new MenuItem { Header = "Acknowledge all", Command = _tray.AcknowledgeAllCommand });
         menu.Items.Add(new MenuItem { Header = "Alerts…", Command = _tray.ShowAlertsCommand });
         menu.Items.Add(new MenuItem { Header = "Settings…", Command = _tray.ShowSettingsCommand });
         menu.Items.Add(new Separator());
@@ -181,6 +188,15 @@ public sealed class TrayHost : ITrayShell, IDisposable
     private async Task OnAlertAsync(Alert alert)
     {
         await _tray.OnAlertAsync(alert);
+        if (_alertsWindow?.DataContext is AlertsViewModel alerts)
+        {
+            await alerts.SelectAlertAsync(null);
+        }
+    }
+
+    private async Task OnAlertsChangedAsync()
+    {
+        await _tray.OnAlertsChangedAsync();
         if (_alertsWindow?.DataContext is AlertsViewModel alerts)
         {
             await alerts.SelectAlertAsync(null);

@@ -14,6 +14,9 @@ Design: [free-space-watcher.md](./free-space-watcher.md) (the approved design; r
 
    - Done 2026-09-23: elevated ETW test (exact counts), install via sudo, three fill tests (alerts, toast replaced in place, suspend from toast, exact write/growth accounting, event log text). Not yet done: Resume from the new confirmation toast by hand, the alert with the tray closed, reboot, uninstall.
 
+- [ ] 8. Fix the four small backlog issues below (summary toast, tray.log in tests, process-state cap, second-instance config write) — user approved 2026-09-23; brief `.tmp/briefs/task-10.md`, runs after 7
+- [x] 7. Alerts UI: Acknowledge all, Clear (selected) and Clear all, as buttons and context-menu items (user request 2026-09-23)
+
 ## Backlog
 
 - [ ] The summary toast shown on connect has no Tag/Group, so summary toasts from repeated reconnects may stack (not verified).

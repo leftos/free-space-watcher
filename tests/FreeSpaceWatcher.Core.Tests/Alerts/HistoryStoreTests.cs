@@ -31,11 +31,81 @@ public sealed class HistoryStoreTests : IDisposable
         Assert.False(loaded.Acknowledged);
         Assert.Contains("\"trigger\": \"DropRate\"", File.ReadAllText(Path.Combine(AlertsPath, older.Id + ".json")));
 
-        Assert.True(store.Acknowledge(older.Id));
+        Assert.Equal(1, store.Acknowledge([older.Id]));
         Assert.True(store.Get(older.Id)?.Acknowledged);
-        Assert.False(store.Acknowledge("20200101-000000-C-Floor"));
         Assert.Null(store.Get(@"..\config"));
         Assert.Empty(_errors);
+    }
+
+    [Fact]
+    public void Acknowledge_SomeAllAndNone_CountsOnlyAlertsThatChanged()
+    {
+        HistoryStore store = CreateStore();
+        Alert first = store.Save(MakeAlert(T0, TriggerKind.DropRate));
+        Alert second = store.Save(MakeAlert(T0.AddMinutes(1), TriggerKind.Floor));
+        store.Save(MakeAlert(T0.AddMinutes(2), TriggerKind.TimeToFull));
+
+        Assert.Equal(0, store.Acknowledge([]));
+        Assert.Equal(2, store.Acknowledge([first.Id, second.Id, first.Id]));
+        Assert.Equal(0, store.Acknowledge([first.Id]));
+        Assert.Equal(1, store.Acknowledge(null));
+        Assert.Equal(0, store.Acknowledge(null));
+        Assert.All(store.List(), alert => Assert.True(alert.Acknowledged));
+        Assert.Empty(_errors);
+    }
+
+    [Fact]
+    public void Acknowledge_UnknownAndInvalidIds_AreSkipped()
+    {
+        HistoryStore store = CreateStore();
+        Alert saved = store.Save(MakeAlert(T0, TriggerKind.DropRate));
+
+        int count = store.Acknowledge(["20200101-000000-C-Floor", @"..\config", "", saved.Id]);
+
+        Assert.Equal(1, count);
+        Assert.True(store.Get(saved.Id)?.Acknowledged);
+        Assert.Empty(_errors);
+    }
+
+    [Fact]
+    public void Delete_SomeThenAll_CountsDeletedAlerts()
+    {
+        HistoryStore store = CreateStore();
+        Alert first = store.Save(MakeAlert(T0, TriggerKind.DropRate));
+        Alert second = store.Save(MakeAlert(T0.AddMinutes(1), TriggerKind.Floor));
+        Alert third = store.Save(MakeAlert(T0.AddMinutes(2), TriggerKind.TimeToFull));
+
+        Assert.Equal(0, store.Delete([]));
+        Assert.Equal(2, store.Delete([first.Id, second.Id, first.Id]));
+        Assert.Equal(third.Id, Assert.Single(store.List()).Id);
+        Assert.False(File.Exists(Path.Combine(AlertsPath, first.Id + ".json")));
+        Assert.Equal(1, store.Delete(null));
+        Assert.Empty(store.List());
+        Assert.Equal(0, store.Delete(null));
+    }
+
+    [Fact]
+    public void Delete_UnknownAndInvalidIds_AreSkipped()
+    {
+        HistoryStore store = CreateStore();
+        Alert saved = store.Save(MakeAlert(T0, TriggerKind.DropRate));
+        string outside = Path.Combine(_temp.Path, "config.json");
+        File.WriteAllText(outside, "{}");
+
+        int count = store.Delete(["20200101-000000-C-Floor", @"..\config", "", "*"]);
+
+        Assert.Equal(0, count);
+        Assert.True(File.Exists(outside));
+        Assert.Equal(saved.Id, Assert.Single(store.List()).Id);
+    }
+
+    [Fact]
+    public void Delete_All_WhenNothingWasSaved_ReturnsZero()
+    {
+        HistoryStore store = CreateStore();
+
+        Assert.Equal(0, store.Delete(null));
+        Assert.Equal(0, store.Acknowledge(null));
     }
 
     [Fact]

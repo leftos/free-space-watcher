@@ -10,9 +10,16 @@ using FreeSpaceWatcher.Tray.Status;
 namespace FreeSpaceWatcher.Tray.Alerts;
 
 /// <summary>One row of the alert history list.</summary>
-/// <param name="Summary">The alert summary.</param>
-public sealed record AlertListItem(AlertSummary Summary)
+/// <param name="summary">The alert summary.</param>
+public sealed partial class AlertListItem(AlertSummary summary) : ObservableObject
 {
+    /// <summary>Gets the alert summary.</summary>
+    public AlertSummary Summary { get; } = summary;
+
+    /// <summary>Gets or sets whether the row is selected; the list binds each row's selection to it.</summary>
+    [ObservableProperty]
+    public partial bool IsSelected { get; set; }
+
     /// <summary>Gets whether the alert is still unacknowledged; the list shows those in bold.</summary>
     public bool IsUnacknowledged => !Summary.Acknowledged;
 

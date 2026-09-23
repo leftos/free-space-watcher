@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.ComponentModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using FreeSpaceWatcher.Core.Ipc;
@@ -7,8 +8,8 @@ using FreeSpaceWatcher.Tray.Pipe;
 namespace FreeSpaceWatcher.Tray.Alerts;
 
 /// <summary>
-/// The alerts window: history newest first, the selected alert's details with each process's state, process actions with the
-/// outcome of the last one, and acknowledgement.
+/// The alerts window: history newest first with a multi-row selection, the details of the row selected last with each process's
+/// state, process actions with the outcome of the last one, acknowledgement, and deleting alerts from the history.
 /// </summary>
 /// <param name="channel">The service connection.</param>
 /// <param name="dialogs">Confirmations and error messages.</param>
@@ -17,15 +18,15 @@ public sealed partial class AlertsViewModel(IServiceChannel channel, IUserDialog
 {
     private string? _statusAlertId;
 
-    /// <summary>Raised after an alert was acknowledged, so the tray can recount unacknowledged alerts.</summary>
-    public event EventHandler? AlertsChanged;
-
-    /// <summary>Gets the alert history, newest first.</summary>
+    /// <summary>Gets the alert history, newest first; each row's <see cref="AlertListItem.IsSelected"/> is the list's selection.</summary>
     public ObservableCollection<AlertListItem> Alerts { get; } = [];
 
-    /// <summary>Gets or sets the selected alert; selecting one loads its details.</summary>
+    /// <summary>Gets the selected rows, in list order.</summary>
+    public IReadOnlyList<AlertListItem> SelectedAlerts => [.. Alerts.Where(a => a.IsSelected)];
+
+    /// <summary>Gets the row whose details are shown: the row selected last, while it stays selected; loading it loads its details.</summary>
     [ObservableProperty]
-    public partial AlertListItem? SelectedAlert { get; set; }
+    public partial AlertListItem? SelectedAlert { get; private set; }
 
     /// <summary>Gets the selected alert's details.</summary>
     [ObservableProperty]
@@ -44,15 +45,29 @@ public sealed partial class AlertsViewModel(IServiceChannel channel, IUserDialog
     [ObservableProperty]
     public partial bool ActionFailed { get; private set; }
 
-    /// <summary>Reloads the history and selects an alert.</summary>
-    /// <param name="alertId">The alert to select, or null to keep the current selection.</param>
+    /// <summary>Asks whether to clear the selected alerts: null (no question) for a single alert, otherwise "Delete N alerts from history?".</summary>
+    /// <param name="count">How many alerts are selected.</param>
+    /// <returns>The question, or null when clearing goes ahead without one.</returns>
+    public static string? ClearQuestion(int count) => count > 1 ? $"Delete {count} alerts from history?" : null;
+
+    /// <summary>Asks whether to clear every alert in the history.</summary>
+    /// <param name="count">How many alerts the list shows.</param>
+    /// <returns>The question, e.g. "Delete all 3 alerts from history? This cannot be undone.".</returns>
+    public static string ClearAllQuestion(int count) =>
+        count == 1 ? "Delete 1 alert from history? This cannot be undone." : $"Delete all {count} alerts from history? This cannot be undone.";
+
+    /// <summary>Reloads the history, keeping the selected rows that still exist, and optionally selects just one alert.</summary>
+    /// <param name="alertId">The alert to select alone, or null to keep the current selection.</param>
     /// <returns>A task that completes when the list is loaded and the selection set.</returns>
     public async Task SelectAlertAsync(string? alertId)
     {
         await RefreshAsync();
         if (alertId is not null)
         {
-            SelectedAlert = Alerts.FirstOrDefault(a => a.Summary.Id == alertId);
+            foreach (AlertListItem item in Alerts)
+            {
+                item.IsSelected = item.Summary.Id == alertId;
+            }
         }
     }
 
@@ -119,19 +134,58 @@ public sealed partial class AlertsViewModel(IServiceChannel channel, IUserDialog
     private async Task RefreshAsync()
     {
         AlertListResponse? response = await SendAsync<AlertListResponse>(new ListAlertsRequest());
-        if (response is null)
+        if (response is not null)
+        {
+            ShowAlerts(response.Alerts);
+        }
+    }
+
+    private void ShowAlerts(IReadOnlyList<AlertSummary> summaries)
+    {
+        HashSet<string> selectedIds = [.. SelectedAlerts.Select(a => a.Summary.Id)];
+        string? shownId = SelectedAlert?.Summary.Id;
+        foreach (AlertListItem old in Alerts)
+        {
+            old.PropertyChanged -= OnItemPropertyChanged;
+        }
+
+        Alerts.Clear();
+        foreach (AlertSummary summary in summaries.OrderByDescending(a => a.Time))
+        {
+            AlertListItem item = new(summary) { IsSelected = selectedIds.Contains(summary.Id) };
+            item.PropertyChanged += OnItemPropertyChanged;
+            Alerts.Add(item);
+        }
+
+        SelectedAlert = shownId is null ? null : Alerts.FirstOrDefault(a => a.Summary.Id == shownId);
+        NotifyListCommands();
+    }
+
+    private void OnItemPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (sender is not AlertListItem item || e.PropertyName != nameof(AlertListItem.IsSelected))
         {
             return;
         }
 
-        string? selectedId = SelectedAlert?.Summary.Id;
-        Alerts.Clear();
-        foreach (AlertSummary summary in response.Alerts.OrderByDescending(a => a.Time))
+        if (item.IsSelected)
         {
-            Alerts.Add(new AlertListItem(summary));
+            SelectedAlert = item;
+        }
+        else if (ReferenceEquals(item, SelectedAlert))
+        {
+            SelectedAlert = Alerts.FirstOrDefault(a => a.IsSelected);
         }
 
-        SelectedAlert = selectedId is null ? null : Alerts.FirstOrDefault(a => a.Summary.Id == selectedId);
+        NotifyListCommands();
+    }
+
+    private void NotifyListCommands()
+    {
+        AcknowledgeAllCommand.NotifyCanExecuteChanged();
+        AcknowledgeSelectedCommand.NotifyCanExecuteChanged();
+        ClearCommand.NotifyCanExecuteChanged();
+        ClearAllCommand.NotifyCanExecuteChanged();
     }
 
     partial void OnSelectedAlertChanged(AlertListItem? value)
@@ -217,26 +271,57 @@ public sealed partial class AlertsViewModel(IServiceChannel channel, IUserDialog
     private bool CanAcknowledge() => Details is { Acknowledged: false };
 
     [RelayCommand(CanExecute = nameof(CanAcknowledge))]
-    private async Task AcknowledgeAsync()
+    private Task AcknowledgeAsync() => Details is { } details ? AcknowledgeIdsAsync([details.Id]) : Task.CompletedTask;
+
+    private bool CanAcknowledgeAll() => Alerts.Any(a => a.IsUnacknowledged);
+
+    [RelayCommand(CanExecute = nameof(CanAcknowledgeAll))]
+    private Task AcknowledgeAllAsync() => AcknowledgeIdsAsync(null);
+
+    private bool CanAcknowledgeSelected() => Alerts.Any(a => a.IsSelected && a.IsUnacknowledged);
+
+    [RelayCommand(CanExecute = nameof(CanAcknowledgeSelected))]
+    private Task AcknowledgeSelectedAsync() => AcknowledgeIdsAsync([.. SelectedAlerts.Select(a => a.Summary.Id)]);
+
+    private bool CanClear() => Alerts.Any(a => a.IsSelected);
+
+    [RelayCommand(CanExecute = nameof(CanClear))]
+    private async Task ClearAsync()
     {
-        if (Details is not { } details)
+        string[] ids = [.. SelectedAlerts.Select(a => a.Summary.Id)];
+        if (ClearQuestion(ids.Length) is string question && !dialogs.Confirm("Clear alerts", question))
         {
             return;
         }
 
-        AckResponse? response = await SendAsync<AckResponse>(new AckAlertRequest(details.Id));
-        if (response is null)
-        {
-            return;
-        }
+        await DeleteIdsAsync(ids);
+    }
 
-        if (!response.Ok)
-        {
-            ErrorMessage = $"Alert {details.Id} is no longer in the history.";
-        }
+    private bool CanClearAll() => Alerts.Count > 0;
 
-        await RefreshAsync();
-        AlertsChanged?.Invoke(this, EventArgs.Empty);
+    [RelayCommand(CanExecute = nameof(CanClearAll))]
+    private async Task ClearAllAsync()
+    {
+        if (dialogs.Confirm("Clear all alerts", ClearAllQuestion(Alerts.Count)))
+        {
+            await DeleteIdsAsync(null);
+        }
+    }
+
+    private async Task AcknowledgeIdsAsync(IReadOnlyList<string>? ids)
+    {
+        if (await SendAsync<AckResponse>(new AckAlertsRequest(ids)) is not null)
+        {
+            await RefreshAsync();
+        }
+    }
+
+    private async Task DeleteIdsAsync(IReadOnlyList<string>? ids)
+    {
+        if (await SendAsync<DeleteAlertsResponse>(new DeleteAlertsRequest(ids)) is not null)
+        {
+            await RefreshAsync();
+        }
     }
 
     [RelayCommand]

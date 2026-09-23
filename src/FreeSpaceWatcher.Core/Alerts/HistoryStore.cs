@@ -89,23 +89,20 @@ public sealed class HistoryStore(string directory, Action<string>? onError)
         return File.Exists(path) ? TryRead(path) : null;
     }
 
-    /// <summary>Marks an alert as acknowledged.</summary>
-    /// <param name="id">The alert id.</param>
-    /// <returns>True when the alert exists (acknowledged now or before); false otherwise.</returns>
-    public bool Acknowledge(string id)
+    /// <summary>Marks alerts as acknowledged; invalid, unknown and already acknowledged ids are skipped.</summary>
+    /// <param name="ids">The alert ids, or null for every unacknowledged alert.</param>
+    /// <returns>How many alerts changed from unacknowledged to acknowledged.</returns>
+    public int Acknowledge(IReadOnlyCollection<string>? ids)
     {
-        Alert? alert = Get(id);
-        if (alert is null)
-        {
-            return false;
-        }
-
-        if (!alert.Acknowledged)
+        IEnumerable<Alert> alerts = ids is null ? List() : ids.Distinct(StringComparer.Ordinal).Select(Get).OfType<Alert>();
+        int changed = 0;
+        foreach (Alert alert in alerts.Where(a => !a.Acknowledged).ToList())
         {
             string temp = WriteTemp(alert with { Acknowledged = true });
             try
             {
-                File.Move(temp, PathFor(id), overwrite: true);
+                File.Move(temp, PathFor(alert.Id), overwrite: true);
+                changed++;
             }
             finally
             {
@@ -113,7 +110,27 @@ public sealed class HistoryStore(string directory, Action<string>? onError)
             }
         }
 
-        return true;
+        return changed;
+    }
+
+    /// <summary>Deletes alerts from the history; invalid and unknown ids are skipped.</summary>
+    /// <param name="ids">The alert ids, or null for every alert <see cref="List"/> returns; unreadable files are kept.</param>
+    /// <returns>How many alert files were deleted.</returns>
+    public int Delete(IReadOnlyCollection<string>? ids)
+    {
+        IEnumerable<string> targets = ids is null ? List().Select(a => a.Id) : ids.Where(IsSafeId).Distinct(StringComparer.Ordinal);
+        int deleted = 0;
+        foreach (string id in targets.ToList())
+        {
+            string path = PathFor(id);
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+                deleted++;
+            }
+        }
+
+        return deleted;
     }
 
     /// <summary>Deletes alerts raised more than <paramref name="days"/> days before <paramref name="now"/>; exactly that old is kept.</summary>

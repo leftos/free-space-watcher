@@ -1,5 +1,7 @@
+using FreeSpaceWatcher.Core.Alerts;
 using FreeSpaceWatcher.Core.Config;
 using FreeSpaceWatcher.Core.Ipc;
+using FreeSpaceWatcher.Core.Triggers;
 
 namespace FreeSpaceWatcher.Service.Tests.Pipe;
 
@@ -65,6 +67,54 @@ public sealed class PipeServerTests
         Assert.False(response.Ok);
         Assert.Contains(response.Errors, e => e.Contains("Sample interval", StringComparison.Ordinal));
         Assert.Equal(1, harness.Config.Current.SampleIntervalSeconds);
+    }
+
+    [Fact]
+    public async Task AckAllAndDeleteAll_ChangeTheStore_AndPushAlertsChangedToOtherSubscribers()
+    {
+        CancellationToken ct = TestContext.Current.CancellationToken;
+        await using PipeTestHarness harness = await PipeTestHarness.StartAsync(ct);
+        harness.History.Save(AlertOn("C", 0));
+        harness.History.Save(AlertOn("D", 1));
+        await using PipeTestClient requester = await harness.ConnectAsync(ct);
+        await using PipeTestClient subscriber = await harness.ConnectAsync(ct);
+        await subscriber.RequestAsync<StatusResponse>(new SubscribeRequest { RequestId = 1 }, ct);
+
+        AckResponse ack = await requester.RequestAsync<AckResponse>(new AckAlertsRequest(null) { RequestId = 2 }, ct);
+        AlertsChangedPush afterAck = await subscriber.ReadAsync<AlertsChangedPush>(ct);
+
+        Assert.Equal(2, ack.RequestId);
+        Assert.Equal(2, ack.Count);
+        Assert.Equal(0, afterAck.RequestId);
+        Assert.All(harness.History.List(), alert => Assert.True(alert.Acknowledged));
+
+        DeleteAlertsResponse delete = await requester.RequestAsync<DeleteAlertsResponse>(new DeleteAlertsRequest(null) { RequestId = 3 }, ct);
+        AlertsChangedPush afterDelete = await subscriber.ReadAsync<AlertsChangedPush>(ct);
+
+        Assert.Equal(3, delete.RequestId);
+        Assert.Equal(2, delete.Count);
+        Assert.Equal(0, afterDelete.RequestId);
+        Assert.Empty(harness.History.List());
+    }
+
+    private static Alert AlertOn(string drive, int minute)
+    {
+        DateTimeOffset time = new(2026, 9, 23, 14, minute, 0, TimeSpan.Zero);
+        return new Alert
+        {
+            Id = Alert.CreateId(time, drive, TriggerKind.Floor),
+            Time = time,
+            Drive = drive,
+            Trigger = TriggerKind.Floor,
+            IsEscalation = false,
+            Reason = $"{drive}: below the floor",
+            FreeBytes = 1L << 30,
+            TotalBytes = 100L << 30,
+            DropRateBytesPerSecond = 0,
+            TimeToFull = null,
+            UnattributedBytes = 0,
+            Processes = [],
+        };
     }
 
     private static StatusResponse StatusWith(string letter) =>

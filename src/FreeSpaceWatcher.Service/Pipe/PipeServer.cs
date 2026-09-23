@@ -14,7 +14,8 @@ namespace FreeSpaceWatcher.Service.Pipe;
 /// <remarks>
 /// The pipe grants full control to SYSTEM, Administrators and the account running the service, and read/write to interactive
 /// users. A malformed line gets an <see cref="ErrorResponse"/> and the connection stays up. A client that sends
-/// <see cref="SubscribeRequest"/> gets the current status as the response, then every status push and alert push.
+/// <see cref="SubscribeRequest"/> gets the current status as the response, then every status push, alert push and alerts-changed
+/// push.
 /// </remarks>
 /// <param name="handler">Answers requests.</param>
 /// <param name="hub">Supplies status and pushes.</param>

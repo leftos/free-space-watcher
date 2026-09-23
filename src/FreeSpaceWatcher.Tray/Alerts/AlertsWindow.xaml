@@ -90,8 +90,24 @@
         <ColumnDefinition Width="*" />
       </Grid.ColumnDefinitions>
       <DockPanel Grid.Column="0">
-        <Button DockPanel.Dock="Top" Margin="0,0,0,6" HorizontalAlignment="Left" Padding="8,2" Content="Refresh" Command="{Binding RefreshCommand}" />
-        <ListBox ItemsSource="{Binding Alerts}" SelectedItem="{Binding SelectedAlert}">
+        <StackPanel DockPanel.Dock="Top" Margin="0,0,0,6" Orientation="Horizontal">
+          <Button Padding="8,2" Content="Refresh" Command="{Binding RefreshCommand}" />
+          <Button Margin="6,0,0,0" Padding="8,2" Content="Acknowledge all" Command="{Binding AcknowledgeAllCommand}" />
+          <Button Margin="6,0,0,0" Padding="8,2" Content="Clear" Command="{Binding ClearCommand}" />
+          <Button Margin="6,0,0,0" Padding="8,2" Content="Clear all" Command="{Binding ClearAllCommand}" />
+        </StackPanel>
+        <ListBox ItemsSource="{Binding Alerts}" SelectionMode="Extended" VirtualizingPanel.IsVirtualizing="False">
+          <ListBox.ItemContainerStyle>
+            <Style TargetType="ListBoxItem">
+              <Setter Property="IsSelected" Value="{Binding IsSelected, Mode=TwoWay}" />
+            </Style>
+          </ListBox.ItemContainerStyle>
+          <ListBox.ContextMenu>
+            <ContextMenu>
+              <MenuItem Header="Acknowledge" Command="{Binding AcknowledgeSelectedCommand}" />
+              <MenuItem Header="Clear" Command="{Binding ClearCommand}" />
+            </ContextMenu>
+          </ListBox.ContextMenu>
           <ListBox.ItemTemplate>
             <DataTemplate>
               <TextBlock Text="{Binding Display}">

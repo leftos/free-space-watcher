@@ -43,6 +43,9 @@ public sealed class StatusHub
         Push(new AlertPush(alert));
     }
 
+    /// <summary>Tells every subscriber, with an <see cref="AlertsChangedPush"/>, that alerts were acknowledged or deleted.</summary>
+    public void PublishAlertsChanged() => Push(new AlertsChangedPush());
+
     /// <summary>Starts delivering pushes to <paramref name="onPush"/>, which must not block.</summary>
     /// <param name="onPush">Receives each push on the publishing thread.</param>
     /// <returns>A handle that stops the delivery when disposed.</returns>

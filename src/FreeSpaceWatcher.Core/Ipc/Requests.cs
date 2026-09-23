@@ -22,9 +22,13 @@ public sealed record ListAlertsRequest : PipeMessage;
 /// <param name="Id">The alert id.</param>
 public sealed record GetAlertRequest(string Id) : PipeMessage;
 
-/// <summary>Marks an alert as acknowledged.</summary>
-/// <param name="Id">The alert id.</param>
-public sealed record AckAlertRequest(string Id) : PipeMessage;
+/// <summary>Marks alerts as acknowledged.</summary>
+/// <param name="Ids">The alert ids, or null for every unacknowledged alert.</param>
+public sealed record AckAlertsRequest(IReadOnlyList<string>? Ids) : PipeMessage;
+
+/// <summary>Deletes alerts from the history.</summary>
+/// <param name="Ids">The alert ids, or null for every alert.</param>
+public sealed record DeleteAlertsRequest(IReadOnlyList<string>? Ids) : PipeMessage;
 
 /// <summary>What to do to a process.</summary>
 public enum ProcessAction
