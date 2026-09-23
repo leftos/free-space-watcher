@@ -22,6 +22,8 @@ Design: [free-space-watcher.md](./free-space-watcher.md) (the approved design; r
 
 - [x] 11. An app that cleans up after itself should not leave an alert: suppress it or auto-acknowledge it once the space comes back (user request 2026-09-23) — decided design in [auto-resolve.md](./auto-resolve.md); runs after UI pass 1
 
+- [x] 12. Tray crash on a left-click or double-click of the icon: the Status chart threw on every layout pass before its first sample, starving every window and then killing the tray (user report 2026-09-23)
+
 ## Backlog
 
 - [x] The summary toast shown on connect has no Tag/Group, so summary toasts from repeated reconnects may stack (not verified).

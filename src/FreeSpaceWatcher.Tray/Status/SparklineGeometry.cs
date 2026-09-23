@@ -33,11 +33,17 @@ public sealed record SparklineGeometry(IReadOnlyList<Point> Points, double? Floo
     public static SparklineGeometry Map(IReadOnlyList<DriveSample> samples, DateTimeOffset end, TimeSpan span, Size size, long? floorBytes)
     {
         ArgumentNullException.ThrowIfNull(samples);
+        SparklineGeometry empty = new([], null, null, null);
+        if (samples.Count == 0 || span <= TimeSpan.Zero)
+        {
+            return empty;
+        }
+
         DateTimeOffset start = end - span;
         List<DriveSample> inView = [.. samples.Where(s => s.Time >= start && s.Time <= end)];
-        if (inView.Count == 0 || span <= TimeSpan.Zero)
+        if (inView.Count == 0)
         {
-            return new SparklineGeometry([], null, null, null);
+            return empty;
         }
 
         long min = inView.Min(s => s.FreeBytes);

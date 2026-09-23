@@ -27,6 +27,16 @@ public sealed class SparklineGeometryTests
     }
 
     [Fact]
+    public void NoSamples_EndingAtTheEarliestTime_DrawsNothing()
+    {
+        // The chart passes DateTimeOffset.MinValue as the end before its first sample arrives.
+        var geometry = SparklineGeometry.Map([], DateTimeOffset.MinValue, Span, Area, 100);
+
+        Assert.Empty(geometry.Points);
+        Assert.Null(geometry.FloorY);
+    }
+
+    [Fact]
     public void SteadySeries_WithKilobytesOfNoise_DrawsFlatAtMidHeight()
     {
         var geometry = SparklineGeometry.Map([At(-600, 50 * Gib), At(-300, (50 * Gib) + 4096), At(0, (50 * Gib) - 4096)], End, Span, Area, null);
