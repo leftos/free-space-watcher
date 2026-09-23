@@ -9,7 +9,7 @@ Design: [free-space-watcher.md](./free-space-watcher.md) (the approved design; r
 - [x] 2. Core: config + validation, TriggerEvaluator, WriteAggregator, IPC contracts, HistoryStore, with tests
 - [x] 3. Service: DriveSampler, WriteCollector (ETW), AlertEngine, PipeServer, ProcessActions, Event Log; ETW integration test
 - [x] 4. Tray: pipe client, tray icon, settings window, alerts/details window, toasts
-- [ ] 5. Elevate helper; install/uninstall/fill-test scripts; README usage
+- [x] 5. Elevate helper; install/uninstall/fill-test scripts; README usage
 - [ ] 6. End-to-end verification on this machine (design doc, "Verification"); includes the first elevated run of `dotnet test tests/FreeSpaceWatcher.Service.Tests` (ETW integration test, never yet run) and settling the "Known limits" wording from it
 
 ## Backlog

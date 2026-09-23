@@ -23,7 +23,7 @@ public interface IShellActions
     /// <param name="action">The action.</param>
     /// <param name="processId">The process id.</param>
     /// <param name="processStartTime">The process start time, when known.</param>
-    /// <returns>Why the helper could not be started, or null when it started or the user cancelled the prompt.</returns>
+    /// <returns>Why the helper did not start or, by its exit code, did not succeed; null when it succeeded or the prompt was cancelled.</returns>
     string? RunElevated(ProcessAction action, int processId, DateTimeOffset? processStartTime);
 }
 
@@ -35,6 +35,10 @@ public sealed class ShellActions(string elevateHelperPath) : IShellActions
     public const string ElevateHelperFileName = "FreeSpaceWatcher.Elevate.exe";
 
     private const int ErrorCancelled = 1223;
+    private const int HelperSucceeded = 0;
+    private const int HelperFailed = 1;
+    private const int ElevatedHelperWaitSeconds = 10;
+    private static readonly TimeSpan ElevatedHelperWait = TimeSpan.FromSeconds(ElevatedHelperWaitSeconds);
 
     /// <summary>Gets the helper's expected path: next to the tray executable.</summary>
     public static string DefaultElevateHelperPath => Path.Combine(AppContext.BaseDirectory, ElevateHelperFileName);
@@ -88,17 +92,33 @@ public sealed class ShellActions(string elevateHelperPath) : IShellActions
         try
         {
             using var process = Process.Start(CreateElevatedStartInfo(elevateHelperPath, action, processId, processStartTime));
-            return null;
+            return process is null ? $"{elevateHelperPath} did not start." : ElevatedOutcome(process, action, processId);
         }
         catch (Win32Exception ex) when (ex.NativeErrorCode == ErrorCancelled)
         {
-            Trace.TraceInformation($"The UAC prompt for {elevateHelperPath} was cancelled.");
+            TrayLog.Information($"The UAC prompt for {elevateHelperPath} was cancelled.", null);
             return null;
         }
         catch (Win32Exception ex)
         {
             return $"Could not start {elevateHelperPath}: {ex.Message}";
         }
+    }
+
+    private static string? ElevatedOutcome(Process process, ProcessAction action, int processId)
+    {
+        if (!process.WaitForExit(ElevatedHelperWait))
+        {
+            return $"{ElevateHelperFileName} did not finish within {ElevatedHelperWaitSeconds} s.";
+        }
+
+        return process.ExitCode switch
+        {
+            HelperSucceeded => null,
+            HelperFailed => $"Running as administrator could not {ActionArgument(action)} process {processId}: "
+                + "it may have exited, be critical to Windows, or its id may now belong to a different process.",
+            int code => $"{ElevateHelperFileName} exited with code {code}.",
+        };
     }
 
     private static string ActionArgument(ProcessAction action) =>

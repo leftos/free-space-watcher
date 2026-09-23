@@ -1,22 +1,17 @@
 using FreeSpaceWatcher.Core.Ipc;
 using FreeSpaceWatcher.Native;
 using Microsoft.Extensions.Logging;
-using static System.FormattableString;
 
 namespace FreeSpaceWatcher.Service.Processes;
 
 /// <summary>Suspends, resumes and kills processes for pipe clients, with the client's own rights.</summary>
 /// <remarks>
-/// The service's own process and critical processes are refused outright, and so is a request whose start time does not match
-/// the live process (the pid was reused). Those checks run as the service; the action itself runs inside the caller's
-/// impersonation, so a client can only act on processes its own token may open.
+/// The checks of <see cref="ProcessGuard"/> run as the service, protecting the service's own process; the action itself runs
+/// inside the caller's impersonation, so a client can only act on processes its own token may open.
 /// </remarks>
 /// <param name="logger">Receives each action and its outcome.</param>
 public sealed partial class ProcessActions(ILogger<ProcessActions> logger)
 {
-    /// <summary>How far a request's start time may differ from the live process's before the pid counts as reused.</summary>
-    public static readonly TimeSpan StartTimeTolerance = TimeSpan.FromSeconds(1);
-
     /// <summary>Checks and applies a process action.</summary>
     /// <param name="request">The action requested.</param>
     /// <param name="runAsClient">Runs its argument while impersonating the requesting client.</param>
@@ -26,28 +21,10 @@ public sealed partial class ProcessActions(ILogger<ProcessActions> logger)
         ArgumentNullException.ThrowIfNull(request);
         ArgumentNullException.ThrowIfNull(runAsClient);
         int pid = request.ProcessId;
-        if (pid == Environment.ProcessId)
+        ProcessControlResult check = ProcessGuard.Check(pid, request.ProcessStartTime, Environment.ProcessId);
+        if (!check.Ok)
         {
-            return Refuse("FreeSpaceWatcher does not act on its own process.");
-        }
-
-        ProcessControlResult query = ProcessControl.Query(pid, out ProcessFacts? facts);
-        if (!query.Ok || facts is null)
-        {
-            return ToResponse(query);
-        }
-
-        if (facts.IsCritical)
-        {
-            return Refuse(Invariant($"Process {pid} is critical to Windows; ending or suspending it would stop the system."));
-        }
-
-        if (request.ProcessStartTime is DateTimeOffset expected && (facts.StartTime - expected).Duration() > StartTimeTolerance)
-        {
-            return Refuse(
-                Invariant($"Process {pid} started at {facts.StartTime:yyyy-MM-dd HH:mm:ss zzz}, not at {expected:yyyy-MM-dd HH:mm:ss zzz}: ")
-                    + "its id now belongs to a different process."
-            );
+            return ToResponse(check);
         }
 
         ProcessControlResult result = ProcessControlResult.Success;
@@ -65,8 +42,6 @@ public sealed partial class ProcessActions(ILogger<ProcessActions> logger)
             ProcessAction.Kill => ProcessControlAction.Terminate,
             _ => throw new ArgumentOutOfRangeException(nameof(action), action, "Unknown process action."),
         };
-
-    private static ProcessActionResponse Refuse(string reason) => new(false, false, reason);
 
     private static ProcessActionResponse ToResponse(ProcessControlResult result) => new(result.Ok, result.AccessDenied, result.Error);
 

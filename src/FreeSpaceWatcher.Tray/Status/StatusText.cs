@@ -14,11 +14,14 @@ public static class StatusText
     /// <summary>The placeholder for a value that is not known.</summary>
     public const string Unknown = "—";
 
+    /// <summary>The longest tooltip Windows shows: its buffer holds 128 characters, including the terminating null.</summary>
+    public const int MaxTooltipLength = 127;
+
     /// <summary>Builds the tray tooltip: one line per watched drive, or <see cref="ServiceNotRunning"/> when disconnected.</summary>
     /// <param name="connected">Whether the service is connected.</param>
     /// <param name="status">The latest status, if any arrived.</param>
     /// <param name="config">The configuration in use, for each drive's noise floor; the built-in defaults apply without one.</param>
-    /// <returns>The tooltip text, lines separated by "\n".</returns>
+    /// <returns>The tooltip text, lines separated by "\n", cut to <see cref="MaxTooltipLength"/> characters ending in "…" when longer.</returns>
     public static string Tooltip(bool connected, StatusResponse? status, WatcherConfig? config)
     {
         if (!connected)
@@ -32,7 +35,7 @@ public static class StatusText
         }
 
         List<string> lines = [.. status.Drives.Where(d => d.Watched).Select(d => DriveLine(d, NoiseFloor(config, d.Letter)))];
-        return lines.Count == 0 ? "No drives are watched" : string.Join('\n', lines);
+        return lines.Count == 0 ? "No drives are watched" : FitTooltip(string.Join('\n', lines));
     }
 
     /// <summary>Gets a drive's noise floor: its override, the configured default, or the built-in default without a configuration.</summary>
@@ -112,6 +115,9 @@ public static class StatusText
             ? FormatEta(eta)
             : Unknown;
     }
+
+    private static string FitTooltip(string text) =>
+        text.Length <= MaxTooltipLength ? text : string.Concat(text.AsSpan(0, MaxTooltipLength - 1), "…");
 
     private static bool IsLosing(double bytesPerSecond, long noiseFloorBytesPerMinute) => bytesPerSecond * 60 > noiseFloorBytesPerMinute;
 }

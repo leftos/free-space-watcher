@@ -151,6 +151,7 @@ public sealed partial class PipeServer(PipeRequestHandler handler, StatusHub hub
 
     private async Task ServeClientAsync(int id, NamedPipeServerStream pipe, CancellationToken stoppingToken)
     {
+        LogClientConnected(logger, id);
         PipeConnection connection = new(pipe);
         Task pushes = connection.PumpPushesAsync(stoppingToken);
         IDisposable? subscription = null;
@@ -164,7 +165,7 @@ public sealed partial class PipeServer(PipeRequestHandler handler, StatusHub hub
                     continue;
                 }
 
-                PipeMessage response = Respond(line, pipe, connection, ref subscription);
+                PipeMessage response = Respond(id, line, pipe, connection, ref subscription);
                 await connection.SendAsync(response, stoppingToken).ConfigureAwait(false);
             }
 
@@ -185,7 +186,7 @@ public sealed partial class PipeServer(PipeRequestHandler handler, StatusHub hub
         }
     }
 
-    private PipeMessage Respond(string line, NamedPipeServerStream pipe, PipeConnection connection, ref IDisposable? subscription)
+    private PipeMessage Respond(int id, string line, NamedPipeServerStream pipe, PipeConnection connection, ref IDisposable? subscription)
     {
         PipeMessage request;
         try
@@ -200,6 +201,7 @@ public sealed partial class PipeServer(PipeRequestHandler handler, StatusHub hub
 
         if (request is SubscribeRequest)
         {
+            LogSubscribe(logger, id);
             subscription ??= hub.Subscribe(connection.EnqueuePush);
             return hub.Current with { RequestId = request.RequestId };
         }
@@ -233,6 +235,12 @@ public sealed partial class PipeServer(PipeRequestHandler handler, StatusHub hub
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Accepting a pipe client failed")]
     private static partial void LogAcceptFailed(ILogger logger, Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Pipe client {ClientId} connected")]
+    private static partial void LogClientConnected(ILogger logger, int clientId);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Pipe client {ClientId} sent SubscribeRequest")]
+    private static partial void LogSubscribe(ILogger logger, int clientId);
 
     [LoggerMessage(Level = LogLevel.Debug, Message = "Pipe client {ClientId} disconnected: {Reason}")]
     private static partial void LogClientGone(ILogger logger, int clientId, string reason);

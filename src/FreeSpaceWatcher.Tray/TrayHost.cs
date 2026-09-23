@@ -120,7 +120,7 @@ public sealed class TrayHost : ITrayShell, IDisposable
         _taskbarIcon.Dispose();
         if (!_client.DisposeAsync().AsTask().Wait(ShutdownWait))
         {
-            System.Diagnostics.Trace.TraceWarning("The pipe client did not stop within 2 s of exit.");
+            TrayLog.Warning("The pipe client did not stop within 2 s of exit.", null);
         }
 
         foreach (DrawingIcon icon in _icons.Values)

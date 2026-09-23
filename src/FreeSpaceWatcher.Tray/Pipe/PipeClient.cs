@@ -154,7 +154,7 @@ public sealed class PipeClient(string pipeName, TimeSpan requestTimeout) : IServ
             await pipe.DisposeAsync().ConfigureAwait(false);
             if (ex is UnauthorizedAccessException)
             {
-                Trace.TraceWarning($"Connecting to pipe '{pipeName}' was refused: {ex.Message}");
+                TrayLog.Warning($"Connecting to pipe '{pipeName}' was refused.", ex);
             }
 
             return false;
@@ -177,7 +177,7 @@ public sealed class PipeClient(string pipeName, TimeSpan requestTimeout) : IServ
         }
         catch (Exception ex) when (IsRequestFailure(ex) || ex is OperationCanceledException)
         {
-            Trace.TraceWarning($"Subscribing to pipe '{pipeName}' failed: {ex.Message}");
+            TrayLog.Warning($"Subscribing to pipe '{pipeName}' failed.", ex);
             await pipe.DisposeAsync().ConfigureAwait(false);
         }
 
@@ -207,7 +207,7 @@ public sealed class PipeClient(string pipeName, TimeSpan requestTimeout) : IServ
         }
         catch (Exception ex) when (ex is IOException or ObjectDisposedException or OperationCanceledException)
         {
-            Trace.TraceInformation($"Pipe '{pipeName}' closed: {ex.Message}");
+            TrayLog.Information($"Pipe '{pipeName}' closed: {ex.Message}", null);
         }
     }
 
@@ -220,7 +220,7 @@ public sealed class PipeClient(string pipeName, TimeSpan requestTimeout) : IServ
         }
         catch (InvalidDataException ex)
         {
-            Trace.TraceWarning($"Ignoring a malformed message from pipe '{pipeName}': {ex.Message}");
+            TrayLog.Warning($"Ignoring a malformed message from pipe '{pipeName}'.", ex);
             return;
         }
 
@@ -239,7 +239,7 @@ public sealed class PipeClient(string pipeName, TimeSpan requestTimeout) : IServ
                 }
                 else
                 {
-                    Trace.TraceWarning($"Ignoring {message.GetType().Name} {message.RequestId}: no request is waiting for it.");
+                    TrayLog.Warning($"Ignoring {message.GetType().Name} {message.RequestId}: no request is waiting for it.", null);
                 }
 
                 break;

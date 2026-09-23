@@ -192,7 +192,7 @@ public sealed partial class TrayViewModel(IServiceChannel channel, ITrayShell sh
         }
         catch (Exception ex) when (PipeClient.IsRequestFailure(ex))
         {
-            System.Diagnostics.Trace.TraceWarning($"{request.GetType().Name} failed: {ex.Message}");
+            TrayLog.Warning($"{request.GetType().Name} failed.", ex);
             return null;
         }
     }

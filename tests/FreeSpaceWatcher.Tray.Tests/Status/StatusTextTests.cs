@@ -35,6 +35,19 @@ public sealed class StatusTextTests
         Assert.Equal("C: 41.2 GB free\nD: 41.2 GB free", tooltip);
     }
 
+    [Fact]
+    public void Tooltip_ThreeLosingDrives_IsCutTo127CharactersEndingInEllipsis()
+    {
+        double rate = 1.3 * (1L << 30) / 60;
+        var eta = TimeSpan.FromMinutes(31);
+
+        string tooltip = StatusText.Tooltip(true, Status(Drive("C", rate, eta), Drive("D", rate, eta), Drive("E", rate, eta)), null);
+
+        Assert.Equal(127, tooltip.Length);
+        Assert.StartsWith("C: 41.2 GB free · losing 1.3 GB/min · full in ~31 min\nD: 41.2 GB free", tooltip, StringComparison.Ordinal);
+        Assert.EndsWith("…", tooltip, StringComparison.Ordinal);
+    }
+
     private static StatusResponse Status(params DriveStatus[] drives) => new(drives, true, null);
 
     private static DriveStatus Drive(string letter, double? rate, TimeSpan? eta) =>

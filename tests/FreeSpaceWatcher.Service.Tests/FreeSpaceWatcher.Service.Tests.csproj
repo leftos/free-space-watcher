@@ -18,6 +18,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\..\src\FreeSpaceWatcher.Elevate\FreeSpaceWatcher.Elevate.csproj" />
     <ProjectReference Include="..\..\src\FreeSpaceWatcher.Service\FreeSpaceWatcher.Service.csproj" />
   </ItemGroup>
 </Project>
