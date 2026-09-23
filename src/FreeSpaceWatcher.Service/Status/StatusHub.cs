@@ -43,8 +43,16 @@ public sealed class StatusHub
         Push(new AlertPush(alert));
     }
 
-    /// <summary>Tells every subscriber, with an <see cref="AlertsChangedPush"/>, that alerts were acknowledged or deleted.</summary>
+    /// <summary>Tells every subscriber, with an <see cref="AlertsChangedPush"/>, that alerts were acknowledged, deleted or resolved.</summary>
     public void PublishAlertsChanged() => Push(new AlertsChangedPush());
+
+    /// <summary>Pushes an alert that resolved itself to every subscriber as an <see cref="AlertResolvedPush"/>.</summary>
+    /// <param name="alert">The resolved alert.</param>
+    public void PublishAlertResolved(Alert alert)
+    {
+        ArgumentNullException.ThrowIfNull(alert);
+        Push(new AlertResolvedPush(alert));
+    }
 
     /// <summary>Starts delivering pushes to <paramref name="onPush"/>, which must not block.</summary>
     /// <param name="onPush">Receives each push on the publishing thread.</param>

@@ -9,11 +9,14 @@ public enum WriteKind
     /// <summary>A file was created.</summary>
     Create,
 
-    /// <summary>A file was deleted.</summary>
+    /// <summary>A file was deleted; the event's bytes are its known size, 0 when unknown.</summary>
     Delete,
 
     /// <summary>A file's end grew; the event's bytes are the growth.</summary>
     Extend,
+
+    /// <summary>A file's end was set below its known end; the event's bytes are the shrink.</summary>
+    Shrink,
 }
 
 /// <summary>One file operation by one process.</summary>
@@ -34,7 +37,10 @@ public sealed record WriteEvent
     /// <summary>Gets the kind of operation.</summary>
     public required WriteKind Kind { get; init; }
 
-    /// <summary>Gets the bytes written, or the growth for <see cref="WriteKind.Extend"/>; ignored for creates and deletes.</summary>
+    /// <summary>
+    /// Gets the bytes written, the growth for <see cref="WriteKind.Extend"/>, the shrink for <see cref="WriteKind.Shrink"/>, or the
+    /// deleted file's known size for <see cref="WriteKind.Delete"/>; ignored for creates.
+    /// </summary>
     public required long Bytes { get; init; }
 }
 
@@ -64,6 +70,9 @@ public sealed record ProcessWriteReport
 
     /// <summary>Gets the end-of-file growth the process caused on the drive.</summary>
     public required long ExtendBytes { get; init; }
+
+    /// <summary>Gets the bytes the process removed from the drive: the known sizes of the files it deleted plus the files it shrank.</summary>
+    public long RemovedBytes { get; init; }
 
     /// <summary>Gets how many file creations the process made.</summary>
     public required int FilesCreated { get; init; }

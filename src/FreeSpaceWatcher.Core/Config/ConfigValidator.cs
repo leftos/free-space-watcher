@@ -5,6 +5,9 @@ namespace FreeSpaceWatcher.Core.Config;
 /// <summary>Checks a configuration for values the watcher cannot work with.</summary>
 public static class ConfigValidator
 {
+    private const int MaxGraceSeconds = 600;
+    private const int MaxResolveMinutes = 1440;
+
     /// <summary>Lists every problem in <paramref name="config"/> as a sentence the settings window can show.</summary>
     /// <param name="config">The configuration to check.</param>
     /// <returns>The problems found; empty when the configuration is usable.</returns>
@@ -29,6 +32,16 @@ public static class ConfigValidator
         if (thresholds.FloorPercent is double percent && !(percent > 0 && percent <= 100))
         {
             errors.Add(Invariant($"{scope}: floor percent must be greater than 0 and at most 100 (got {percent})."));
+        }
+
+        if (thresholds.GraceSeconds is int grace && grace is < 0 or > MaxGraceSeconds)
+        {
+            errors.Add(Invariant($"{scope}: grace delay must be from 0 to {MaxGraceSeconds} seconds, 0 to disable (got {grace})."));
+        }
+
+        if (thresholds.ResolveMinutes is int resolve && resolve is < 0 or > MaxResolveMinutes)
+        {
+            errors.Add(Invariant($"{scope}: resolve window must be from 0 to {MaxResolveMinutes} minutes, 0 to disable (got {resolve})."));
         }
     }
 
@@ -125,5 +138,7 @@ public static class ConfigValidator
             FloorBytes = resolved.FloorBytes,
             FloorPercent = resolved.FloorPercent,
             ProcessWriteBytes = resolved.ProcessWriteBytes,
+            GraceSeconds = resolved.GraceSeconds,
+            ResolveMinutes = resolved.ResolveMinutes,
         };
 }

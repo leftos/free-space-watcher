@@ -128,5 +128,31 @@ public sealed class ConfigValidatorTests
         Assert.Equal("Drive C: time to full must be greater than zero (got -1).", error);
     }
 
+    [Theory]
+    [InlineData(-1)]
+    [InlineData(601)]
+    public void GraceSecondsOutsideRange_IsRejected(int seconds)
+    {
+        string error = SingleError(Valid with { Defaults = Valid.Defaults with { GraceSeconds = seconds } });
+
+        Assert.Equal($"Defaults: grace delay must be from 0 to 600 seconds, 0 to disable (got {seconds}).", error);
+    }
+
+    [Theory]
+    [InlineData(-1)]
+    [InlineData(1441)]
+    public void ResolveMinutesOutsideRange_IsRejected(int minutes)
+    {
+        string error = SingleError(Valid with { Drives = [new("C", true, new Thresholds { ResolveMinutes = minutes })] });
+
+        Assert.Equal($"Drive C: resolve window must be from 0 to 1440 minutes, 0 to disable (got {minutes}).", error);
+    }
+
+    [Theory]
+    [InlineData(0, 0)]
+    [InlineData(600, 1440)]
+    public void GraceAndResolveBounds_AreAccepted(int seconds, int minutes) =>
+        Assert.Empty(ConfigValidator.Validate(Valid with { Defaults = Valid.Defaults with { GraceSeconds = seconds, ResolveMinutes = minutes } }));
+
     private static string SingleError(WatcherConfig config) => Assert.Single(ConfigValidator.Validate(config));
 }

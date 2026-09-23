@@ -98,19 +98,28 @@ public sealed class HistoryStore(string directory, Action<string>? onError)
         int changed = 0;
         foreach (Alert alert in alerts.Where(a => !a.Acknowledged).ToList())
         {
-            string temp = WriteTemp(alert with { Acknowledged = true });
-            try
-            {
-                File.Move(temp, PathFor(alert.Id), overwrite: true);
-                changed++;
-            }
-            finally
-            {
-                DeleteIfPresent(temp);
-            }
+            Replace(alert with { Acknowledged = true });
+            changed++;
         }
 
         return changed;
+    }
+
+    /// <summary>Marks an alert as resolved by its writers, and acknowledged.</summary>
+    /// <param name="id">The alert id.</param>
+    /// <param name="at">When the alert resolved.</param>
+    /// <param name="reason">Why it resolved, e.g. "pwsh deleted 14.0 GB it had written".</param>
+    /// <returns>True when the alert was updated; false when the id is invalid, unknown or unreadable.</returns>
+    public bool MarkResolved(string id, DateTimeOffset at, string reason)
+    {
+        ArgumentNullException.ThrowIfNull(reason);
+        if (Get(id) is not Alert alert)
+        {
+            return false;
+        }
+
+        Replace(alert with { Acknowledged = true, ResolvedAt = at, ResolvedReason = reason });
+        return true;
     }
 
     /// <summary>Deletes alerts from the history; invalid and unknown ids are skipped.</summary>
@@ -169,6 +178,19 @@ public sealed class HistoryStore(string directory, Action<string>? onError)
     }
 
     private string PathFor(string id) => Path.Combine(directory, id + ".json");
+
+    private void Replace(Alert alert)
+    {
+        string temp = WriteTemp(alert);
+        try
+        {
+            File.Move(temp, PathFor(alert.Id), overwrite: true);
+        }
+        finally
+        {
+            DeleteIfPresent(temp);
+        }
+    }
 
     private string WriteTemp(Alert alert)
     {

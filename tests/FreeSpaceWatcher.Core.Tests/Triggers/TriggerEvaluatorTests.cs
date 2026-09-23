@@ -1,5 +1,6 @@
 using FreeSpaceWatcher.Core.Config;
 using FreeSpaceWatcher.Core.Triggers;
+using FreeSpaceWatcher.Core.Writes;
 using Firings = System.Collections.Generic.List<(int Index, FreeSpaceWatcher.Core.Triggers.TriggerFiring Firing)>;
 
 namespace FreeSpaceWatcher.Core.Tests.Triggers;
@@ -185,7 +186,26 @@ public sealed class TriggerEvaluatorTests
         Assert.Equal(TriggerKind.ProcessWriteVolume, firing.Kind);
         Assert.Equal(3, firing.ProcessId);
         Assert.Equal("bigger", firing.ProcessName);
-        Assert.Equal("C: bigger (pid 3) wrote 12.0 GB within the write window", firing.Reason);
+        Assert.Equal("C: bigger (pid 3) grew its files by 12.0 GB within the write window", firing.Reason);
+    }
+
+    [Fact]
+    public void ProcessWrite_FiresOnNetGrowth_NotOnChurn()
+    {
+        WriteAggregator churn = new(TimeSpan.FromMinutes(5), 100);
+        churn.Record(WriteOf(@"C:\tmp\big.bin", WriteKind.Extend, 12 * GiB));
+        churn.Record(WriteOf(@"C:\tmp\old.bin", WriteKind.Delete, 11 * GiB));
+        WriteAggregator growth = new(TimeSpan.FromMinutes(5), 100);
+        growth.ProcessStarted(3, "pwsh", null, T0);
+        growth.Record(WriteOf(@"C:\tmp\big.bin", WriteKind.Extend, 12 * GiB));
+
+        IReadOnlyList<TriggerFiring> afterChurn = Create(Only(TriggerKind.ProcessWriteVolume))
+            .Evaluate(Sample(1, 500 * GiB), churn.Totals('C', T0.AddSeconds(1)));
+        IReadOnlyList<TriggerFiring> afterGrowth = Create(Only(TriggerKind.ProcessWriteVolume))
+            .Evaluate(Sample(1, 500 * GiB), growth.Totals('C', T0.AddSeconds(1)));
+
+        Assert.Empty(afterChurn);
+        Assert.Equal("C: pwsh (pid 3) grew its files by 12.0 GB within the write window", Assert.Single(afterGrowth).Reason);
     }
 
     [Fact]
@@ -193,13 +213,13 @@ public sealed class TriggerEvaluatorTests
     {
         TriggerEvaluator evaluator = Create(Only(TriggerKind.ProcessWriteVolume));
         ProcessWriteTotal first = new(1, "first", 11 * GiB);
-        ProcessWriteTotal firstLater = first with { BytesWritten = 12 * GiB };
+        ProcessWriteTotal firstLater = first with { NetGrowthBytes = 12 * GiB };
         ProcessWriteTotal second = new(2, "second", 13 * GiB);
 
         TriggerFiring initial = Assert.Single(evaluator.Evaluate(Sample(0, 500 * GiB), [first]));
         Assert.Empty(evaluator.Evaluate(Sample(1, 500 * GiB), [firstLater]));
         TriggerFiring escalation = Assert.Single(evaluator.Evaluate(Sample(2, 500 * GiB), [firstLater, second]));
-        Assert.Empty(evaluator.Evaluate(Sample(3, 500 * GiB), [second with { BytesWritten = 14 * GiB }]));
+        Assert.Empty(evaluator.Evaluate(Sample(3, 500 * GiB), [second with { NetGrowthBytes = 14 * GiB }]));
 
         Assert.False(initial.IsEscalation);
         Assert.Equal(1, initial.ProcessId);
@@ -246,6 +266,55 @@ public sealed class TriggerEvaluatorTests
         Assert.Equal(88, first.Index);
     }
 
+    [Fact]
+    public void Retract_AfterFiring_AllowsANewFiringAtOnce()
+    {
+        TriggerEvaluator evaluator = Create(ResolvedThresholds.Default);
+        Func<int, long> ramp = Losing(900 * GiB, 2 * GiB);
+        Assert.Equal(48, Assert.Single(Run(evaluator, 0, 49, ramp)).Index);
+        Assert.Empty(Run(evaluator, 49, 50, ramp));
+
+        evaluator.Retract(TriggerKind.DropRate);
+        Firings afterRetract = Run(evaluator, 50, 52, ramp);
+
+        (int Index, TriggerFiring Firing) again = Assert.Single(afterRetract);
+        Assert.Equal(50, again.Index);
+        Assert.Equal(TriggerKind.DropRate, again.Firing.Kind);
+        Assert.False(again.Firing.IsEscalation);
+    }
+
+    [Fact]
+    public void Retract_OfMergedRateFiring_UndoesTheSharedClock()
+    {
+        TriggerEvaluator evaluator = Create(ResolvedThresholds.Default with { TimeToFullMinutes = 1000 });
+        Func<int, long> ramp = Losing(900 * GiB, 2 * GiB);
+        TriggerKind[] both = [TriggerKind.DropRate, TriggerKind.TimeToFull];
+        Assert.Equal(both, Run(evaluator, 0, 49, ramp).Select(f => f.Firing.Kind).Order());
+
+        evaluator.Retract(TriggerKind.TimeToFull);
+        evaluator.Retract(TriggerKind.DropRate);
+
+        Assert.Equal(both, Run(evaluator, 49, 50, ramp).Select(f => f.Firing.Kind).Order());
+    }
+
+    [Fact]
+    public void Retract_WithoutFiring_IsNoOp()
+    {
+        TriggerEvaluator evaluator = Create(Only(TriggerKind.DropRate));
+        Func<int, long> ramp = Losing(900 * GiB, 2 * GiB);
+
+        evaluator.Retract(TriggerKind.DropRate);
+        Assert.Equal(48, Assert.Single(Run(evaluator, 0, 49, ramp)).Index);
+        evaluator.Retract(TriggerKind.DropRate);
+        Assert.Single(Run(evaluator, 49, 50, ramp));
+        evaluator.Retract(TriggerKind.DropRate);
+        evaluator.Retract(TriggerKind.DropRate);
+        Assert.Single(Run(evaluator, 50, 51, ramp));
+        evaluator.Retract(TriggerKind.TimeToFull);
+
+        Assert.Empty(Run(evaluator, 51, 60, ramp));
+    }
+
     private static TriggerEvaluator Create(ResolvedThresholds limits) => new("C", () => limits, RateWindow, Cooldown);
 
     private static ResolvedThresholds Only(TriggerKind kind) =>
@@ -272,6 +341,17 @@ public sealed class TriggerEvaluatorTests
         i => i < RampStart ? start : start - bytesPerSecond * (i - RampStart + 1);
 
     private static DriveSample Sample(int second, long freeBytes) => new(T0.AddSeconds(second), freeBytes, TotalBytes);
+
+    private static WriteEvent WriteOf(string path, WriteKind kind, long bytes) =>
+        new()
+        {
+            Time = T0,
+            ProcessId = 3,
+            Drive = path[0],
+            Path = path,
+            Kind = kind,
+            Bytes = bytes,
+        };
 
     private static Firings Run(TriggerEvaluator evaluator, int from, int to, Func<int, long> freeAt)
     {

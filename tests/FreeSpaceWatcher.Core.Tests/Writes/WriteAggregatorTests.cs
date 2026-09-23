@@ -117,8 +117,8 @@ public sealed class WriteAggregatorTests
     {
         WriteAggregator aggregator = new(Window, 100);
         aggregator.Record(Write(1, 1, @"C:\c.log", 10));
-        aggregator.Record(Write(1, 1, @"D:\d.log", 20));
-        aggregator.Record(Write(1, 2, @"D:\e.log", 5));
+        aggregator.Record(Event(1, 1, @"D:\d.log", WriteKind.Extend, 20));
+        aggregator.Record(Event(1, 2, @"D:\e.log", WriteKind.Extend, 5));
 
         DriveWriteSnapshot c = Snap(aggregator, 'C', 1);
         IReadOnlyList<ProcessWriteTotal> d = aggregator.Totals('d', T0.AddSeconds(1));
@@ -155,6 +155,40 @@ public sealed class WriteAggregatorTests
         FileWrite b = Assert.Single(report.Files, f => f.Path == @"C:\d\b.log");
         Assert.True(b.Deleted);
         Assert.False(b.Created);
+    }
+
+    [Fact]
+    public void DeleteAndShrink_CountedAsRemoved()
+    {
+        WriteAggregator aggregator = new(Window, 100);
+        aggregator.Record(Event(1, 1, @"C:\d\a.log", WriteKind.Extend, 100));
+        aggregator.Record(Event(2, 1, @"C:\d\a.log", WriteKind.Shrink, 20));
+        aggregator.Record(Event(2, 1, @"C:\d\b.log", WriteKind.Delete, 30));
+        aggregator.Record(Event(2, 2, @"C:\d\c.log", WriteKind.Delete, 7));
+
+        DriveWriteSnapshot snapshot = Snap(aggregator, 'C', 2);
+        ProcessWriteReport one = Assert.Single(snapshot.Processes, p => p.ProcessId == 1);
+        ProcessWriteReport two = Assert.Single(snapshot.Processes, p => p.ProcessId == 2);
+
+        Assert.Equal(50, one.RemovedBytes);
+        Assert.Equal(100, one.ExtendBytes);
+        Assert.Equal(1, one.FilesDeleted);
+        Assert.Equal(7, two.RemovedBytes);
+        ProcessWriteTotal[] expected = [new(1, "pid 1", 50), new(2, "pid 2", 0)];
+        Assert.Equal(expected, aggregator.Totals('C', T0.AddSeconds(2)));
+    }
+
+    [Fact]
+    public void NetGrowth_FlooredAtZero()
+    {
+        WriteAggregator aggregator = new(Window, 100);
+        aggregator.Record(Event(1, 1, @"C:\d\a.log", WriteKind.Extend, 10));
+        aggregator.Record(Event(1, 1, @"C:\d\old.log", WriteKind.Delete, 50));
+
+        ProcessWriteTotal total = Assert.Single(aggregator.Totals('C', T0.AddSeconds(1)));
+
+        Assert.Equal(0, total.NetGrowthBytes);
+        Assert.Equal(50, Assert.Single(Snap(aggregator, 'C', 1).Processes).RemovedBytes);
     }
 
     private static WriteEvent Event(int second, int pid, string path, WriteKind kind, long bytes) =>

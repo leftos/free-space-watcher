@@ -26,6 +26,11 @@ internal sealed class FileEndTracker(int capacity)
     /// <param name="size">The file's size.</param>
     public void Reset(string path, long size) => Store(path, size);
 
+    /// <summary>Returns a path's known end without changing how recently it was used.</summary>
+    /// <param name="path">The file's DOS path.</param>
+    /// <returns>The known end, or null when the path is not tracked.</returns>
+    public long? EndOf(string path) => TryGetKnown(path, out long known) ? known : null;
+
     /// <summary>Stops tracking a path, as after its deletion.</summary>
     /// <param name="path">The file's DOS path.</param>
     public void Forget(string path)

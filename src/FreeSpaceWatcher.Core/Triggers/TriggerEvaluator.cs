@@ -28,7 +28,9 @@ public sealed class TriggerEvaluator(string driveLetter, Func<ResolvedThresholds
     private readonly string _label = WatcherConfig.NormalizeLetter(driveLetter) + ":";
     private readonly List<DriveSample> _samples = [];
     private readonly Dictionary<TriggerKind, LastFiring> _lastFirings = [];
+    private readonly Dictionary<TriggerKind, Retraction> _retractions = [];
     private DateTimeOffset? _rateTriggersLastFired;
+    private DateTimeOffset? _rateTriggersFiredBefore;
     private bool _floorArmed = true;
 
     private enum FiringMode
@@ -46,7 +48,7 @@ public sealed class TriggerEvaluator(string driveLetter, Func<ResolvedThresholds
 
     /// <summary>Adds a sample and returns the triggers that fire on it.</summary>
     /// <param name="sample">The newest free-space reading.</param>
-    /// <param name="writes">Each process's bytes written to this drive within the write window.</param>
+    /// <param name="writes">Each process's net growth on this drive within the write window.</param>
     /// <returns>The firings, empty when nothing fires.</returns>
     public IReadOnlyList<TriggerFiring> Evaluate(DriveSample sample, IReadOnlyList<ProcessWriteTotal> writes)
     {
@@ -61,12 +63,48 @@ public sealed class TriggerEvaluator(string driveLetter, Func<ResolvedThresholds
         EvaluateTimeToFull(sample.Time, limits, firings);
         if (firings.Count > 0)
         {
+            _rateTriggersFiredBefore = _rateTriggersLastFired;
             _rateTriggersLastFired = sample.Time;
         }
 
         EvaluateFloor(sample, limits, firings);
         EvaluateProcessWrite(sample.Time, limits, writes, firings);
         return firings;
+    }
+
+    /// <summary>Undoes a trigger's most recent firing, so a discarded alert starts no cooldown.</summary>
+    /// <remarks>
+    /// The trigger's cooldown state goes back to what it was before that firing, and so does the shared drop-rate and time-to-full
+    /// clock when that firing started it; a retracted floor firing re-arms the floor. One level of history is kept per trigger, so
+    /// a second retraction without a firing in between, or a retraction of a trigger that never fired, does nothing.
+    /// </remarks>
+    /// <param name="kind">The trigger whose most recent firing is undone.</param>
+    public void Retract(TriggerKind kind)
+    {
+        if (!_retractions.Remove(kind, out Retraction? retraction))
+        {
+            return;
+        }
+
+        if (kind == TriggerKind.Floor)
+        {
+            _floorArmed = true;
+            return;
+        }
+
+        if (retraction.Previous is LastFiring previous)
+        {
+            _lastFirings[kind] = previous;
+        }
+        else
+        {
+            _lastFirings.Remove(kind);
+        }
+
+        if ((kind is TriggerKind.DropRate or TriggerKind.TimeToFull) && _rateTriggersLastFired == retraction.Time)
+        {
+            _rateTriggersLastFired = _rateTriggersFiredBefore;
+        }
     }
 
     /// <summary>Forgets the samples because the drive went away; the rate must be re-learned from new samples.</summary>
@@ -174,6 +212,7 @@ public sealed class TriggerEvaluator(string driveLetter, Func<ResolvedThresholds
         if (sample.FreeBytes < limits.FloorBytes || sample.FreeBytes < percentFloor)
         {
             _floorArmed = false;
+            _retractions[TriggerKind.Floor] = new Retraction(sample.Time, null);
             string reason = Invariant(
                 $"{_label} only {ByteFormat.Format(sample.FreeBytes)} free, below the floor of {ByteFormat.Format(limits.FloorBytes)} or {limits.FloorPercent:0.##} %"
             );
@@ -194,8 +233,8 @@ public sealed class TriggerEvaluator(string driveLetter, Func<ResolvedThresholds
         }
 
         ProcessWriteTotal? top = writes
-            .Where(w => w.BytesWritten >= limits.ProcessWriteBytes)
-            .OrderByDescending(w => w.BytesWritten)
+            .Where(w => w.NetGrowthBytes >= limits.ProcessWriteBytes)
+            .OrderByDescending(w => w.NetGrowthBytes)
             .ThenBy(w => w.ProcessId)
             .FirstOrDefault();
         if (top is null)
@@ -207,7 +246,7 @@ public sealed class TriggerEvaluator(string driveLetter, Func<ResolvedThresholds
         if (mode != FiringMode.Suppressed)
         {
             string reason = Invariant(
-                $"{_label} {top.ProcessName} (pid {top.ProcessId}) wrote {ByteFormat.Format(top.BytesWritten)} within the write window"
+                $"{_label} {top.ProcessName} (pid {top.ProcessId}) grew its files by {ByteFormat.Format(top.NetGrowthBytes)} within the write window"
             );
             firings.Add(Fire(TriggerKind.ProcessWriteVolume, now, mode, reason, top));
         }
@@ -237,6 +276,7 @@ public sealed class TriggerEvaluator(string driveLetter, Func<ResolvedThresholds
 
     private TriggerFiring Fire(TriggerKind kind, DateTimeOffset now, FiringMode mode, string reason, ProcessWriteTotal? process)
     {
+        _retractions[kind] = new Retraction(now, _lastFirings.GetValueOrDefault(kind));
         _lastFirings[kind] = new LastFiring(now, CurrentDropRate ?? 0, CurrentTimeToFull, process?.ProcessId);
         return Firing(kind, mode == FiringMode.Escalate, reason, process);
     }
@@ -272,4 +312,9 @@ public sealed class TriggerEvaluator(string driveLetter, Func<ResolvedThresholds
     }
 
     private sealed record LastFiring(DateTimeOffset Time, double DropRate, TimeSpan? TimeToFull, int? ProcessId);
+
+    /// <summary>What a retraction of a trigger's most recent firing restores.</summary>
+    /// <param name="Time">When that firing happened.</param>
+    /// <param name="Previous">The trigger's last firing before it, or null when there was none.</param>
+    private sealed record Retraction(DateTimeOffset Time, LastFiring? Previous);
 }

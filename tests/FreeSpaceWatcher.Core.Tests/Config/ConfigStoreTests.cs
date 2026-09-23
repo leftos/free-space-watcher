@@ -1,3 +1,4 @@
+using System.Text.Json.Nodes;
 using FreeSpaceWatcher.Core.Config;
 
 namespace FreeSpaceWatcher.Core.Tests.Config;
@@ -40,8 +41,24 @@ public sealed class ConfigStoreTests : IDisposable
                 TimeToFullMinutes = 7.5,
                 FloorPercent = 2.5,
                 ProcessWriteEnabled = false,
+                GraceSeconds = 0,
+                ResolveMinutes = 30,
             },
-            Drives = [new("C", true, new Thresholds { FloorBytes = 42, TimeToFullEnabled = false }), new("E", false, new Thresholds())],
+            Drives =
+            [
+                new(
+                    "C",
+                    true,
+                    new Thresholds
+                    {
+                        FloorBytes = 42,
+                        TimeToFullEnabled = false,
+                        GraceSeconds = 45,
+                        ResolveMinutes = 0,
+                    }
+                ),
+                new("E", false, new Thresholds()),
+            ],
             SampleIntervalSeconds = 2,
             RateWindowSeconds = 30,
             WriteWindowSeconds = 120,
@@ -60,6 +77,39 @@ public sealed class ConfigStoreTests : IDisposable
         Assert.Equivalent(config, loaded.Config, strict: true);
         Assert.Equal(config.Drives, loaded.Config.Drives);
         Assert.Contains("\"dropRateBytesPerMinute\": 123456789", File.ReadAllText(ConfigPath));
+        ResolvedThresholds c = loaded.Config.For("C");
+        Assert.Equal((45, 0), (c.GraceSeconds, c.ResolveMinutes));
+        ResolvedThresholds e = loaded.Config.For("E");
+        Assert.Equal((0, 30), (e.GraceSeconds, e.ResolveMinutes));
+    }
+
+    [Fact]
+    public void GraceAndResolve_DefaultTo20SecondsAnd5Minutes_WhenAbsentFromTheFile()
+    {
+        new ConfigStore(ConfigPath).Save(WatcherConfig.CreateDefault(FixedDrives));
+        JsonObject root = JsonNode.Parse(File.ReadAllText(ConfigPath))!.AsObject();
+        JsonObject defaults = root["defaults"]!.AsObject();
+        Assert.True(defaults.Remove("graceSeconds"));
+        Assert.True(defaults.Remove("resolveMinutes"));
+        foreach (JsonNode? drive in root["drives"]!.AsArray())
+        {
+            JsonObject overrides = drive!["overrides"]!.AsObject();
+            overrides.Remove("graceSeconds");
+            overrides.Remove("resolveMinutes");
+        }
+
+        string json = root.ToJsonString();
+        Assert.DoesNotContain("graceSeconds", json);
+        Assert.DoesNotContain("resolveMinutes", json);
+        File.WriteAllText(ConfigPath, json);
+
+        ConfigLoadResult result = new ConfigStore(ConfigPath).Load(FixedDrives);
+
+        Assert.Null(result.Error);
+        Assert.Equal(20, ResolvedThresholds.Default.GraceSeconds);
+        Assert.Equal(5, ResolvedThresholds.Default.ResolveMinutes);
+        Assert.Equal((20, 5), (result.Config.Defaults.GraceSeconds, result.Config.Defaults.ResolveMinutes));
+        Assert.Equal((20, 5), (result.Config.For("D").GraceSeconds, result.Config.For("D").ResolveMinutes));
     }
 
     [Fact]

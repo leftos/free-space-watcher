@@ -27,6 +27,7 @@ namespace FreeSpaceWatcher.Core.Ipc;
 [JsonDerivedType(typeof(DriveHistoryResponse), "driveHistoryResponse")]
 [JsonDerivedType(typeof(AlertPush), "alertPush")]
 [JsonDerivedType(typeof(AlertsChangedPush), "alertsChangedPush")]
+[JsonDerivedType(typeof(AlertResolvedPush), "alertResolvedPush")]
 [JsonDerivedType(typeof(StatusPush), "statusPush")]
 [JsonDerivedType(typeof(ErrorResponse), "errorResponse")]
 public abstract record PipeMessage

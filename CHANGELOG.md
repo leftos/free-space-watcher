@@ -14,5 +14,6 @@
 - Suspend, resume or kill a writing process from an alert, with a UAC retry when your account can't touch it.
 - Open a writer's folder or show a file in Explorer from an alert or its toast.
 - Acknowledge all, Clear and Clear all in the Alerts window and its right-click menu, plus Acknowledge all in the tray menu.
+- An app that deletes what it wrote no longer leaves an alert: rate alerts wait 20 s, and alerts resolve themselves within 5 min.
 - Alerts are kept for 30 days and written to the Windows event log.
 - Install, uninstall and fill-test scripts.

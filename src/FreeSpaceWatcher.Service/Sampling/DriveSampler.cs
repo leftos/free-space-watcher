@@ -86,6 +86,7 @@ public sealed partial class DriveSampler(
             statuses.Add(SampleDrive(drive.Letter.ToUpperInvariant(), drive.Enabled, now, aggregator, writeWindow));
         }
 
+        alerts.Tick(now);
         hub.PublishStatus(new StatusResponse(statuses, writes.Running, writes.ErrorMessage));
     }
 
@@ -108,7 +109,7 @@ public sealed partial class DriveSampler(
             window.Add(sample, writeWindow);
             recent.Add(letter, sample, _historyKeep);
             IReadOnlyList<TriggerFiring> firings = evaluator.Evaluate(sample, aggregator.Totals(letter[0], now));
-            alerts.Raise(letter, sample, window.Samples, firings);
+            alerts.Raise(letter, sample, window.Samples, firings, evaluator);
         }
 
         return Status(letter, watched, sample, evaluator);

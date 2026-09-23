@@ -33,6 +33,12 @@ public sealed record Thresholds
     /// <summary>Gets whether the process write volume trigger is enabled.</summary>
     public bool? ProcessWriteEnabled { get; init; }
 
+    /// <summary>Gets the seconds a drop-rate or time-to-full alert is held while its writers may still remove what they wrote; 0 disables.</summary>
+    public int? GraceSeconds { get; init; }
+
+    /// <summary>Gets the minutes after an alert during which it resolves itself when its writers remove what they wrote; 0 disables.</summary>
+    public int? ResolveMinutes { get; init; }
+
     /// <summary>Fills every blank field from <paramref name="defaults"/>.</summary>
     /// <param name="defaults">The values used where this instance has none.</param>
     /// <returns>The complete thresholds for a drive.</returns>
@@ -51,6 +57,8 @@ public sealed record Thresholds
             TimeToFullEnabled = TimeToFullEnabled ?? defaults.TimeToFullEnabled,
             FloorEnabled = FloorEnabled ?? defaults.FloorEnabled,
             ProcessWriteEnabled = ProcessWriteEnabled ?? defaults.ProcessWriteEnabled,
+            GraceSeconds = GraceSeconds ?? defaults.GraceSeconds,
+            ResolveMinutes = ResolveMinutes ?? defaults.ResolveMinutes,
         };
     }
 }

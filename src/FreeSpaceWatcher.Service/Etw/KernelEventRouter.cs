@@ -21,7 +21,8 @@ namespace FreeSpaceWatcher.Service.Etw;
 /// <see cref="WriteKind.Extend"/> for the writer (<see cref="FileEndTracker"/>). The end-of-file sets (information class 20)
 /// that System raises carry the valid data length after each lazy-writer flush, not the file's size, and are ignored. An
 /// end-of-file set from any other process (SetEndOfFile, SetLength, mapped-file growth) records its growth over the known end
-/// to that process and moves the known end to the new size, so writes after a truncation count as growth again. The known
+/// to that process and moves the known end to the new size, so writes after a truncation count as growth again; a set below the
+/// known end records the difference as <see cref="WriteKind.Shrink"/>. A delete records the file's known size. The known
 /// end is 0 after a creating or truncating open; when it is unknown, the first growth is recorded as 0 and counted in
 /// <see cref="ExtendsWithoutBase"/>.
 /// </para>
@@ -170,20 +171,36 @@ internal sealed class KernelEventRouter(WriteAggregatorProvider aggregators, Dev
         }
 
         string? path = MapFor(processId, ntPath);
-        if (path is not null)
+        if (path is null)
         {
-            RecordMapped(processId, time, path, WriteKind.Extend, _fileEnds.Set(path, newSize));
+            return;
+        }
+
+        long? knownEnd = _fileEnds.EndOf(path);
+        RecordMapped(processId, time, path, WriteKind.Extend, _fileEnds.Set(path, newSize));
+        if (knownEnd is long before && newSize < before)
+        {
+            RecordMapped(processId, time, path, WriteKind.Shrink, before - newSize);
         }
     }
 
-    private void OnDelete(FileIOInfoTraceData data)
+    /// <summary>Records a deletion with the file's known size, 0 when unknown, and stops tracking the file's end.</summary>
+    /// <param name="processId">The process the event was raised in.</param>
+    /// <param name="time">The event's time.</param>
+    /// <param name="ntPath">The kernel's path for the file.</param>
+    internal void Delete(int processId, DateTime time, string ntPath)
     {
-        string? path = Record(data.ProcessID, data.TimeStamp, data.FileName, WriteKind.Delete, 0);
-        if (path is not null)
+        string? path = MapFor(processId, ntPath);
+        if (path is null)
         {
-            _fileEnds.Forget(path);
+            return;
         }
+
+        RecordMapped(processId, time, path, WriteKind.Delete, _fileEnds.EndOf(path) ?? 0);
+        _fileEnds.Forget(path);
     }
+
+    private void OnDelete(FileIOInfoTraceData data) => Delete(data.ProcessID, data.TimeStamp, data.FileName);
 
     private void OnProcessStart(ProcessTraceData data)
     {

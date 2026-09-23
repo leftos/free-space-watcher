@@ -21,4 +21,8 @@ Free Space Watcher is a Windows service plus tray app that warns when a drive's 
 - **Fast-I/O retry** — the second ETW Write event Windows logs for one `WriteFile` when a filter driver refuses the fast path and the write is re-issued as an IRP; the collector drops it so the write counts once.
 - **Valid data length** — how far into a file data has actually been written to disk; the lazy writer advances it after each flush, and `System`'s end-of-file events report it, which is why they are not used for growth.
 - **Paging I/O** — writes the cache manager or mapped-page writer issues to flush data an app already wrote (`IRP_PAGING_IO`); dropped so cached writes are not counted twice.
+- **Net growth** — how much a process grew its files in the write window, minus what it deleted or truncated; the write-volume trigger fires on it, so write-then-delete churn does not alert.
+- **Grace delay** — how long (default 20 s) a drop-rate or time-to-full alert is held before it is raised; it is discarded if its writers remove what they wrote in that time.
+- **Auto-resolve** — marking a raised alert resolved and acknowledged when its writers remove what they wrote within the resolve window (default 5 min).
+- **Remaining growth** — for a tracked file, how much of the growth an alert saw is still on disk (current size minus the size before the growth; 0 once deleted). An alert is discarded or resolved when 10 % or less remains.
 - **Elevate helper** — `FreeSpaceWatcher.Elevate.exe`, run through a UAC prompt only to suspend, resume or kill a process the user's own token cannot touch.

@@ -116,8 +116,12 @@ public sealed record DriveHistoryResponse(string Letter, IReadOnlyList<DriveSamp
 /// <param name="Alert">The alert.</param>
 public sealed record AlertPush(Alert Alert) : PipeMessage;
 
-/// <summary>Pushed to subscribed clients after an acknowledgement or deletion changed the alert history.</summary>
+/// <summary>Pushed to subscribed clients after an acknowledgement, a deletion or a resolution changed the alert history.</summary>
 public sealed record AlertsChangedPush : PipeMessage;
+
+/// <summary>An alert that resolved itself because its writers removed what they had written, pushed to subscribed clients.</summary>
+/// <param name="Alert">The alert, with its resolution time and reason, and acknowledged.</param>
+public sealed record AlertResolvedPush(Alert Alert) : PipeMessage;
 
 /// <summary>Live status, pushed to subscribed clients every second.</summary>
 /// <param name="Status">The status.</param>

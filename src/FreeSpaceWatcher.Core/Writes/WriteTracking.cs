@@ -66,6 +66,8 @@ internal sealed class FileStats
 
     public int Deleted { get; private set; }
 
+    public long RemovedBytes { get; private set; }
+
     public void Apply(WriteKind kind, long bytes)
     {
         switch (kind)
@@ -81,6 +83,10 @@ internal sealed class FileStats
                 break;
             case WriteKind.Delete:
                 Deleted++;
+                RemovedBytes += bytes;
+                break;
+            case WriteKind.Shrink:
+                RemovedBytes += bytes;
                 break;
             default:
                 throw new ArgumentOutOfRangeException(nameof(kind), kind, "Unknown write kind.");
@@ -93,6 +99,7 @@ internal sealed class FileStats
         ExtendBytes += other.ExtendBytes;
         Created += other.Created;
         Deleted += other.Deleted;
+        RemovedBytes += other.RemovedBytes;
     }
 }
 
@@ -107,6 +114,11 @@ internal sealed class ProcessTally(TrackedProcess process)
 
     public long ExtendBytes { get; private set; }
 
+    public long RemovedBytes { get; private set; }
+
+    /// <summary>Gets the growth left after the removals, never below 0.</summary>
+    public long NetGrowthBytes => Math.Max(0, ExtendBytes - RemovedBytes);
+
     public void Add(TrackedFile file, FileStats stats)
     {
         if (!Files.TryGetValue(file, out FileStats? total))
@@ -118,5 +130,6 @@ internal sealed class ProcessTally(TrackedProcess process)
         total.Add(stats);
         BytesWritten += stats.BytesWritten;
         ExtendBytes += stats.ExtendBytes;
+        RemovedBytes += stats.RemovedBytes;
     }
 }

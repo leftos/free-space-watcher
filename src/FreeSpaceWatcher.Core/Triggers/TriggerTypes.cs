@@ -18,15 +18,15 @@ public enum TriggerKind
     /// <summary>Free space is below the floor.</summary>
     Floor,
 
-    /// <summary>One process wrote more than the threshold to the drive within the write window.</summary>
+    /// <summary>One process grew its files on the drive by more than the threshold within the write window.</summary>
     ProcessWriteVolume,
 }
 
-/// <summary>Bytes one process wrote to a drive within the write window.</summary>
+/// <summary>How much one process grew its files on a drive within the write window.</summary>
 /// <param name="ProcessId">The process id.</param>
 /// <param name="ProcessName">The process name.</param>
-/// <param name="BytesWritten">Bytes written within the window.</param>
-public sealed record ProcessWriteTotal(int ProcessId, string ProcessName, long BytesWritten);
+/// <param name="NetGrowthBytes">End-of-file growth minus the bytes the process deleted or truncated within the window, never below 0.</param>
+public sealed record ProcessWriteTotal(int ProcessId, string ProcessName, long NetGrowthBytes);
 
 /// <summary>A trigger that fired on one sample.</summary>
 public sealed record TriggerFiring

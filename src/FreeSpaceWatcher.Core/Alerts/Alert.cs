@@ -46,6 +46,12 @@ public sealed record Alert
     /// <summary>Gets whether the user acknowledged the alert.</summary>
     public bool Acknowledged { get; init; }
 
+    /// <summary>Gets when the alert resolved itself because its writers removed what they had written, or null when it has not.</summary>
+    public DateTimeOffset? ResolvedAt { get; init; }
+
+    /// <summary>Gets why the alert resolved itself, e.g. "pwsh deleted 14.0 GB it had written", or null when it has not.</summary>
+    public string? ResolvedReason { get; init; }
+
     /// <summary>Builds the base id for an alert, e.g. "20260923-141500-C-DropRate".</summary>
     /// <param name="time">When the alert was raised, formatted in its own offset.</param>
     /// <param name="drive">The drive letter.</param>

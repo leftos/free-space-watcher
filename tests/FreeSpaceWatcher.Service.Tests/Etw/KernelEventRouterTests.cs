@@ -52,4 +52,29 @@ public sealed class KernelEventRouterTests
         Assert.Equal(2 * Chunk, writer.ExtendBytes);
         Assert.DoesNotContain(snapshot.Processes, p => p.ProcessId == SystemPid);
     }
+
+    [Fact]
+    public void ShrinkAndDeleteOfKnownFiles_AreRecordedAsRemoved()
+    {
+        const int Writer = 1234;
+        const long Chunk = 1 << 20;
+        using TempDirectory temp = new();
+        ConfigService config = new(new ServicePaths(temp.Path), NullLogger<ConfigService>.Instance);
+        WriteAggregatorProvider aggregators = new(config);
+        KernelEventRouter router = new(aggregators, new DevicePathMapper(_ => null, TimeProvider.System), ownProcessId: 1);
+        DateTime now = DateTime.Now;
+
+        router.SetEndOfFile(Writer, now, @"\??\C:\data\shrunk.bin", Chunk);
+        router.SetEndOfFile(Writer, now, @"\??\C:\data\shrunk.bin", 4 * Chunk);
+        router.SetEndOfFile(Writer, now, @"\??\C:\data\shrunk.bin", Chunk);
+        router.SetEndOfFile(Writer, now, @"\??\C:\data\deleted.bin", 5 * Chunk);
+        router.Delete(Writer, now, @"\??\C:\data\deleted.bin");
+        router.Delete(Writer, now, @"\??\C:\data\unknown.bin");
+
+        DriveWriteSnapshot snapshot = aggregators.Current.Snapshot('C', DateTimeOffset.Now, topProcesses: 10, topFolders: 10, topFiles: 10);
+        ProcessWriteReport writer = Assert.Single(snapshot.Processes);
+        Assert.Equal(3 * Chunk, writer.ExtendBytes);
+        Assert.Equal(3 * Chunk + 5 * Chunk, writer.RemovedBytes);
+        Assert.Equal(2, writer.FilesDeleted);
+    }
 }

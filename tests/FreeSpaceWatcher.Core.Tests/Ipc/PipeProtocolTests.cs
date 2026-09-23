@@ -129,6 +129,14 @@ public sealed class PipeProtocolTests
             },
             new AlertPush(alert),
             new AlertsChangedPush(),
+            new AlertResolvedPush(
+                alert with
+                {
+                    Acknowledged = true,
+                    ResolvedAt = T0.AddMinutes(3),
+                    ResolvedReason = "pwsh deleted 14.0 GB it had written",
+                }
+            ),
             new StatusPush(status with { RequestId = 0 }),
             new ErrorResponse("Unknown request") { RequestId = 9 },
         ];

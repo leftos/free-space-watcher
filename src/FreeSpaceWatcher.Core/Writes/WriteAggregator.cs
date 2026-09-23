@@ -105,16 +105,17 @@ public sealed class WriteAggregator(TimeSpan window, int perProcessFileCap)
         }
     }
 
-    /// <summary>Returns every process's bytes written to a drive within the window ending at <paramref name="now"/>.</summary>
+    /// <summary>Returns every process's net growth on a drive within the window ending at <paramref name="now"/>.</summary>
+    /// <remarks>Net growth is the end-of-file growth minus the bytes removed by deletes and shrinks, never below 0.</remarks>
     /// <param name="drive">The drive letter.</param>
     /// <param name="now">The end of the window.</param>
-    /// <returns>The totals, by bytes descending then process id ascending.</returns>
+    /// <returns>The totals, in the snapshot's order: bytes written descending, then process id ascending.</returns>
     public IReadOnlyList<ProcessWriteTotal> Totals(char drive, DateTimeOffset now)
     {
         lock (_gate)
         {
             AdvanceTo(now.ToUnixTimeSeconds());
-            return [.. Collect(char.ToUpperInvariant(drive)).Select(t => new ProcessWriteTotal(t.Process.Pid, t.Process.Name, t.BytesWritten))];
+            return [.. Collect(char.ToUpperInvariant(drive)).Select(t => new ProcessWriteTotal(t.Process.Pid, t.Process.Name, t.NetGrowthBytes))];
         }
     }
 
@@ -219,6 +220,7 @@ public sealed class WriteAggregator(TimeSpan window, int perProcessFileCap)
             StartTime = tally.Process.StartSeen ? tally.Process.StartTime : null,
             BytesWritten = tally.BytesWritten,
             ExtendBytes = tally.ExtendBytes,
+            RemovedBytes = tally.RemovedBytes,
             FilesCreated = tally.Files.Values.Sum(s => s.Created),
             FilesDeleted = tally.Files.Values.Sum(s => s.Deleted),
             Folders = folders,

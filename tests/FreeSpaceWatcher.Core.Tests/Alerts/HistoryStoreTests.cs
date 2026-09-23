@@ -68,6 +68,50 @@ public sealed class HistoryStoreTests : IDisposable
     }
 
     [Fact]
+    public void MarkResolved_KnownAlert_StoresResolutionAndAcknowledges()
+    {
+        HistoryStore store = CreateStore();
+        Alert saved = store.Save(MakeAlert(T0, TriggerKind.DropRate));
+
+        bool marked = store.MarkResolved(saved.Id, T0.AddMinutes(2), "writer deleted 14.0 GB it had written");
+
+        Assert.True(marked);
+        Alert? loaded = store.Get(saved.Id);
+        Assert.NotNull(loaded);
+        Assert.True(loaded.Acknowledged);
+        Assert.Equal(T0.AddMinutes(2), loaded.ResolvedAt);
+        Assert.Equal("writer deleted 14.0 GB it had written", loaded.ResolvedReason);
+        Assert.Equivalent(
+            saved with
+            {
+                Acknowledged = true,
+                ResolvedAt = T0.AddMinutes(2),
+                ResolvedReason = loaded.ResolvedReason,
+            },
+            loaded,
+            strict: true
+        );
+        Assert.Single(Directory.GetFiles(AlertsPath));
+        Assert.Empty(_errors);
+    }
+
+    [Fact]
+    public void MarkResolved_UnknownOrInvalidId_ReturnsFalse()
+    {
+        HistoryStore store = CreateStore();
+        Alert saved = store.Save(MakeAlert(T0, TriggerKind.DropRate));
+
+        Assert.False(store.MarkResolved("20200101-000000-C-Floor", T0, "gone"));
+        Assert.False(store.MarkResolved(@"..\config", T0, "gone"));
+        Assert.False(store.MarkResolved("", T0, "gone"));
+        Alert? untouched = store.Get(saved.Id);
+        Assert.NotNull(untouched);
+        Assert.Null(untouched.ResolvedAt);
+        Assert.False(untouched.Acknowledged);
+        Assert.Single(Directory.GetFiles(AlertsPath));
+    }
+
+    [Fact]
     public void Delete_SomeThenAll_CountsDeletedAlerts()
     {
         HistoryStore store = CreateStore();
