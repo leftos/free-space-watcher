@@ -133,6 +133,8 @@ public sealed class TrayViewModelTests
 
         public void ShowSettings() => throw new InvalidOperationException("Unexpected ShowSettings");
 
+        public void ShowStatus() => throw new InvalidOperationException("Unexpected ShowStatus");
+
         public void ShowAlertToast(Alert alert) => throw new InvalidOperationException("Unexpected ShowAlertToast");
 
         public void ShowSummaryToast(int count) => throw new InvalidOperationException("Unexpected ShowSummaryToast");

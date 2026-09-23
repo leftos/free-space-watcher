@@ -107,6 +107,11 @@ public enum ProcessState
 /// <param name="States">The state of each requested process id.</param>
 public sealed record ProcessStatesResponse(IReadOnlyDictionary<int, ProcessState> States) : PipeMessage;
 
+/// <summary>A drive's recent free-space samples.</summary>
+/// <param name="Letter">The drive letter the request named.</param>
+/// <param name="Samples">The samples, oldest first; empty for a drive that is not watched or not known.</param>
+public sealed record DriveHistoryResponse(string Letter, IReadOnlyList<DriveSample> Samples) : PipeMessage;
+
 /// <summary>A new alert, pushed to subscribed clients.</summary>
 /// <param name="Alert">The alert.</param>
 public sealed record AlertPush(Alert Alert) : PipeMessage;

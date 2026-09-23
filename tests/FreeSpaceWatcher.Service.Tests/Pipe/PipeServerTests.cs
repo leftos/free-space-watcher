@@ -2,6 +2,7 @@ using FreeSpaceWatcher.Core.Alerts;
 using FreeSpaceWatcher.Core.Config;
 using FreeSpaceWatcher.Core.Ipc;
 using FreeSpaceWatcher.Core.Triggers;
+using FreeSpaceWatcher.Service.Sampling;
 
 namespace FreeSpaceWatcher.Service.Tests.Pipe;
 
@@ -20,6 +21,50 @@ public sealed class PipeServerTests
         Assert.Equal(7, response.RequestId);
         Assert.Equal("C", Assert.Single(response.Drives).Letter);
         Assert.False(response.EtwRunning);
+    }
+
+    [Fact]
+    public async Task GetDriveHistory_600sRequest_Returns600sFromTheRing_CapsAt900s_AndEmptyForUnknownDrive()
+    {
+        CancellationToken ct = TestContext.Current.CancellationToken;
+        await using PipeTestHarness harness = await PipeTestHarness.StartAsync(ct);
+        DateTimeOffset newest = new(2026, 9, 23, 14, 30, 0, TimeSpan.Zero);
+        TimeSpan keep = RecentSamples.KeepFor(TimeSpan.FromSeconds(60));
+        for (int age = 1000; age >= 0; age--)
+        {
+            harness.Samples.Add("C", new DriveSample(newest.AddSeconds(-age), 10L << 30, 100L << 30), keep);
+        }
+
+        await using PipeTestClient client = await harness.ConnectAsync(ct);
+
+        DriveHistoryResponse tenMinutes = await client.RequestAsync<DriveHistoryResponse>(new GetDriveHistoryRequest("c", 600) { RequestId = 4 }, ct);
+        DriveHistoryResponse capped = await client.RequestAsync<DriveHistoryResponse>(new GetDriveHistoryRequest("C", 5000) { RequestId = 5 }, ct);
+        DriveHistoryResponse unknown = await client.RequestAsync<DriveHistoryResponse>(new GetDriveHistoryRequest("Q", 600) { RequestId = 6 }, ct);
+
+        Assert.Equal(TimeSpan.FromSeconds(900), keep);
+        Assert.Equal(4, tenMinutes.RequestId);
+        Assert.Equal("c", tenMinutes.Letter);
+        Assert.Equal(601, tenMinutes.Samples.Count);
+        Assert.Equal(newest.AddSeconds(-600), tenMinutes.Samples[0].Time);
+        Assert.Equal(newest, tenMinutes.Samples[^1].Time);
+        Assert.Equal(901, capped.Samples.Count);
+        Assert.Equal(newest.AddSeconds(-900), capped.Samples[0].Time);
+        Assert.Equal(901, harness.Samples.Get("C", TimeSpan.FromSeconds(5000)).Count);
+        Assert.Empty(unknown.Samples);
+    }
+
+    [Fact]
+    public async Task UnknownMessageType_ErrorResponseEchoesTheRequestId()
+    {
+        CancellationToken ct = TestContext.Current.CancellationToken;
+        await using PipeTestHarness harness = await PipeTestHarness.StartAsync(ct);
+        await using PipeTestClient client = await harness.ConnectAsync(ct);
+
+        await client.SendLineAsync("""{"type":"getFutureThingRequest","requestId":42}""", ct);
+        ErrorResponse error = await client.ReadAsync<ErrorResponse>(ct);
+
+        Assert.Equal(42, error.RequestId);
+        Assert.Contains("getFutureThingRequest", error.Message, StringComparison.Ordinal);
     }
 
     [Fact]

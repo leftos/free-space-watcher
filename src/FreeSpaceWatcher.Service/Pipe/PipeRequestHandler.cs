@@ -3,6 +3,7 @@ using FreeSpaceWatcher.Core.Config;
 using FreeSpaceWatcher.Core.Ipc;
 using FreeSpaceWatcher.Service.Config;
 using FreeSpaceWatcher.Service.Processes;
+using FreeSpaceWatcher.Service.Sampling;
 using FreeSpaceWatcher.Service.Status;
 using Microsoft.Extensions.Logging;
 
@@ -13,12 +14,14 @@ namespace FreeSpaceWatcher.Service.Pipe;
 /// <param name="history">Answers alert history requests.</param>
 /// <param name="hub">Supplies the latest status, and tells subscribers when an acknowledgement or deletion changed the history.</param>
 /// <param name="processes">Handles process actions.</param>
+/// <param name="samples">Answers drive history requests from the sampler's windows.</param>
 /// <param name="logger">Receives configuration saves that fail, acknowledgements and deletions.</param>
 public sealed partial class PipeRequestHandler(
     ConfigService config,
     HistoryStore history,
     StatusHub hub,
     ProcessActions processes,
+    RecentSamples samples,
     ILogger<PipeRequestHandler> logger
 )
 {
@@ -40,9 +43,16 @@ public sealed partial class PipeRequestHandler(
             DeleteAlertsRequest delete => new DeleteAlertsResponse(Delete(delete.Ids)),
             ProcessActionRequest action => processes.Handle(action, runAsClient),
             GetProcessStatesRequest states => ProcessActions.QueryStates(states.ProcessIds),
+            GetDriveHistoryRequest drive => DriveHistory(drive),
             _ => new ErrorResponse($"'{request.GetType().Name}' is not a request the service handles."),
         };
         return response with { RequestId = request.RequestId };
+    }
+
+    private DriveHistoryResponse DriveHistory(GetDriveHistoryRequest request)
+    {
+        var span = TimeSpan.FromSeconds(Math.Min(request.Seconds, GetDriveHistoryRequest.MaxSeconds));
+        return new DriveHistoryResponse(request.Letter, samples.Get(request.Letter, span));
     }
 
     private static AlertSummary Summarize(Alert alert) =>

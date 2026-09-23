@@ -9,6 +9,7 @@ using FreeSpaceWatcher.Tray.Alerts;
 using FreeSpaceWatcher.Tray.Icons;
 using FreeSpaceWatcher.Tray.Pipe;
 using FreeSpaceWatcher.Tray.Settings;
+using FreeSpaceWatcher.Tray.Status;
 using FreeSpaceWatcher.Tray.Toasts;
 using H.NotifyIcon;
 using Microsoft.Toolkit.Uwp.Notifications;
@@ -20,6 +21,7 @@ namespace FreeSpaceWatcher.Tray;
 public sealed class TrayHost : ITrayShell, IDisposable
 {
     private static readonly TimeSpan ShutdownWait = TimeSpan.FromSeconds(2);
+    private static readonly TimeSpan OpenWithoutServiceAfter = TimeSpan.FromSeconds(5);
     private readonly Dispatcher _dispatcher;
     private readonly ITrayLog _log;
     private readonly PipeClient _client;
@@ -31,6 +33,9 @@ public sealed class TrayHost : ITrayShell, IDisposable
     private readonly TaskbarIcon _taskbarIcon;
     private AlertsWindow? _alertsWindow;
     private SettingsWindow? _settingsWindow;
+    private StatusWindow? _statusWindow;
+    private TrayWindow? _pendingOpen;
+    private DispatcherTimer? _pendingOpenTimer;
 
     /// <summary>Initializes the host; nothing is shown or connected until <see cref="Start"/>.</summary>
     /// <param name="dispatcher">The UI thread's dispatcher.</param>
@@ -48,8 +53,17 @@ public sealed class TrayHost : ITrayShell, IDisposable
     }
 
     /// <summary>Shows the icon, listens for toast clicks and starts connecting.</summary>
-    public void Start()
+    /// <param name="open">
+    /// A window to open once the service connects, or after 5 s without a connection so a stopped service still shows; null for none.
+    /// </param>
+    public void Start(TrayWindow? open)
     {
+        _pendingOpen = open;
+        if (open is not null)
+        {
+            _pendingOpenTimer = new DispatcherTimer(OpenWithoutServiceAfter, DispatcherPriority.Normal, (_, _) => OpenPending(), _dispatcher);
+        }
+
         _tray.PropertyChanged += OnTrayPropertyChanged;
         _client.ConnectionChanged += (_, connected) => Post(() => OnConnectionChangedAsync(connected));
         _client.StatusReceived += (_, status) => Post(() => OnStatus(status));
@@ -98,6 +112,38 @@ public sealed class TrayHost : ITrayShell, IDisposable
     }
 
     /// <inheritdoc/>
+    public void ShowStatus()
+    {
+        if (_statusWindow is null)
+        {
+            _statusWindow = new StatusWindow { DataContext = new StatusViewModel(_client, this, _log) };
+            _statusWindow.Closed += (_, _) => _statusWindow = null;
+            SyncStatusWindow();
+            _statusWindow.Show();
+        }
+
+        _statusWindow.Activate();
+    }
+
+    /// <summary>Opens (or activates) a window.</summary>
+    /// <param name="window">The window.</param>
+    public void Open(TrayWindow window)
+    {
+        switch (window)
+        {
+            case TrayWindow.Alerts:
+                Post(() => ShowAlertsAsync(null));
+                break;
+            case TrayWindow.Settings:
+                ShowSettings();
+                break;
+            default:
+                ShowStatus();
+                break;
+        }
+    }
+
+    /// <inheritdoc/>
     public void ShowAlertToast(Alert alert) => AlertToasts.ShowAlert(alert);
 
     /// <inheritdoc/>
@@ -131,8 +177,10 @@ public sealed class TrayHost : ITrayShell, IDisposable
     public void Dispose()
     {
         ToastNotificationManagerCompat.OnActivated -= OnToastActivated;
+        _pendingOpenTimer?.Stop();
         _alertsWindow?.Close();
         _settingsWindow?.Close();
+        _statusWindow?.Close();
         _taskbarIcon.Dispose();
         if (!_client.DisposeAsync().AsTask().Wait(ShutdownWait))
         {
@@ -148,6 +196,7 @@ public sealed class TrayHost : ITrayShell, IDisposable
     private TaskbarIcon CreateTaskbarIcon()
     {
         ContextMenu menu = new();
+        menu.Items.Add(new MenuItem { Header = "Status…", Command = _tray.ShowStatusCommand });
         menu.Items.Add(new MenuItem { Header = "Acknowledge all", Command = _tray.AcknowledgeAllCommand });
         menu.Items.Add(new MenuItem { Header = "Alerts…", Command = _tray.ShowAlertsCommand });
         menu.Items.Add(new MenuItem { Header = "Settings…", Command = _tray.ShowSettingsCommand });
@@ -156,7 +205,7 @@ public sealed class TrayHost : ITrayShell, IDisposable
         return new TaskbarIcon
         {
             ContextMenu = menu,
-            LeftClickCommand = _tray.ShowAlertsCommand,
+            LeftClickCommand = _tray.ShowStatusCommand,
             NoLeftClickDelay = true,
             ToolTipText = _tray.ToolTipText,
         };
@@ -180,6 +229,29 @@ public sealed class TrayHost : ITrayShell, IDisposable
         }
 
         await _tray.OnConnectionChangedAsync(connected);
+        if (connected)
+        {
+            OpenPending();
+        }
+    }
+
+    private void OpenPending()
+    {
+        _pendingOpenTimer?.Stop();
+        _pendingOpenTimer = null;
+        if (_pendingOpen is TrayWindow window)
+        {
+            _pendingOpen = null;
+            Open(window);
+        }
+    }
+
+    private void SyncStatusWindow()
+    {
+        if (_statusWindow?.DataContext is StatusViewModel status)
+        {
+            status.Update(_tray.IsConnected, _tray.Status, _tray.Config, _tray.Alerts, DateTimeOffset.Now);
+        }
     }
 
     private void OnStatus(StatusResponse status)
@@ -215,7 +287,11 @@ public sealed class TrayHost : ITrayShell, IDisposable
         Post(() => _tray.HandleToastAsync(request));
     }
 
-    private void OnTrayPropertyChanged(object? sender, PropertyChangedEventArgs e) => UpdateIcon();
+    private void OnTrayPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        UpdateIcon();
+        SyncStatusWindow();
+    }
 
     private void UpdateIcon()
     {

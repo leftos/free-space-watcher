@@ -49,6 +49,15 @@ public enum ProcessAction
 /// <param name="Action">The action.</param>
 public sealed record ProcessActionRequest(int ProcessId, DateTimeOffset? ProcessStartTime, ProcessAction Action) : PipeMessage;
 
+/// <summary>Asks for a watched drive's recent free-space samples.</summary>
+/// <param name="Letter">The drive letter, e.g. "C".</param>
+/// <param name="Seconds">How far back from the newest sample to go; the service caps it at <see cref="MaxSeconds"/>.</param>
+public sealed record GetDriveHistoryRequest(string Letter, int Seconds) : PipeMessage
+{
+    /// <summary>The longest span, in seconds, the service answers with.</summary>
+    public const int MaxSeconds = 900;
+}
+
 /// <summary>Asks whether each of some processes is running, suspended or gone.</summary>
 /// <param name="ProcessIds">The process ids.</param>
 public sealed record GetProcessStatesRequest(IReadOnlyList<int> ProcessIds) : PipeMessage;

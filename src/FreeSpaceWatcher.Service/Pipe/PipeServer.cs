@@ -3,6 +3,7 @@ using System.IO.Pipes;
 using System.Security.AccessControl;
 using System.Security.Principal;
 using System.Text;
+using System.Text.Json;
 using FreeSpaceWatcher.Core.Ipc;
 using FreeSpaceWatcher.Service.Status;
 using Microsoft.Extensions.Hosting;
@@ -212,7 +213,7 @@ public sealed partial class PipeServer(
         catch (InvalidDataException ex)
         {
             LogMalformed(logger, ex.Message);
-            return new ErrorResponse(ex.Message);
+            return new ErrorResponse(ex.Message) { RequestId = RequestIdOf(line) };
         }
 
         if (request is SubscribeRequest)
@@ -231,6 +232,28 @@ public sealed partial class PipeServer(
         {
             LogRequestFailed(logger, ex, request.GetType().Name);
             return new ErrorResponse($"The service could not handle {request.GetType().Name}: {ex.Message}") { RequestId = request.RequestId };
+        }
+    }
+
+    // A line that is JSON but not a message the service knows still names its request id; echoing it lets the client stop waiting.
+    private static int RequestIdOf(string line)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(line);
+            JsonElement root = document.RootElement;
+            return
+                root.ValueKind == JsonValueKind.Object
+                && root.TryGetProperty("requestId", out JsonElement id)
+                && id.ValueKind == JsonValueKind.Number
+                && id.TryGetInt32(out int requestId)
+                ? requestId
+                : 0;
+        }
+        catch (JsonException)
+        {
+            // Not JSON at all: there is no request id to echo, and the line was already logged as malformed.
+            return 0;
         }
     }
 

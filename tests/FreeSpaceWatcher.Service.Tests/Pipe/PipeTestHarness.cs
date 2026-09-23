@@ -5,6 +5,7 @@ using FreeSpaceWatcher.Core.Ipc;
 using FreeSpaceWatcher.Service.Config;
 using FreeSpaceWatcher.Service.Pipe;
 using FreeSpaceWatcher.Service.Processes;
+using FreeSpaceWatcher.Service.Sampling;
 using FreeSpaceWatcher.Service.Status;
 using Microsoft.Extensions.Logging.Abstractions;
 
@@ -26,6 +27,7 @@ internal sealed class PipeTestHarness : IAsyncDisposable
             History,
             Hub,
             new ProcessActions(NullLogger<ProcessActions>.Instance),
+            Samples,
             NullLogger<PipeRequestHandler>.Instance
         );
         _server = new PipeServer(handler, Hub, NullLogger<PipeServer>.Instance, PipeName, PipeServer.ClaimFirstInstance(PipeName));
@@ -38,6 +40,8 @@ internal sealed class PipeTestHarness : IAsyncDisposable
     public ConfigService Config { get; }
 
     public HistoryStore History { get; }
+
+    public RecentSamples Samples { get; } = new();
 
     public static async Task<PipeTestHarness> StartAsync(CancellationToken cancellationToken)
     {

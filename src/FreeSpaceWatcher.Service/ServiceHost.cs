@@ -76,6 +76,7 @@ public static class ServiceHost
         builder.Services.AddSingleton<WriteAggregatorProvider>();
         builder.Services.AddSingleton(_ => new DevicePathMapper(DosDevices.Query, TimeProvider.System));
         builder.Services.AddSingleton<StatusHub>();
+        builder.Services.AddSingleton<RecentSamples>();
         builder.Services.AddSingleton<AlertEngine>();
         builder.Services.AddSingleton<ProcessActions>();
         builder.Services.AddSingleton<PipeRequestHandler>();

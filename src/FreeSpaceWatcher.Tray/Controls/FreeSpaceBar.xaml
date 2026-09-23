@@ -1,0 +1,17 @@
+<UserControl
+  x:Class="FreeSpaceWatcher.Tray.Controls.FreeSpaceBar"
+  xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+  xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+  Height="8"
+>
+  <Grid>
+    <Border CornerRadius="4" Opacity="0.5" Background="{DynamicResource ControlStrongFillColorDisabledBrush}" />
+    <Grid>
+      <Grid.ColumnDefinitions>
+        <ColumnDefinition x:Name="UsedColumn" Width="0*" />
+        <ColumnDefinition x:Name="FreeColumn" Width="1*" />
+      </Grid.ColumnDefinitions>
+      <Border x:Name="Fill" Grid.Column="0" CornerRadius="4" Background="{DynamicResource AccentFillColorDefaultBrush}" />
+    </Grid>
+  </Grid>
+</UserControl>

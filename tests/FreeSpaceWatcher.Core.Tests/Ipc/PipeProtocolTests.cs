@@ -110,6 +110,7 @@ public sealed class PipeProtocolTests
             new DeleteAlertsRequest(null) { RequestId = 11 },
             new ProcessActionRequest(1234, T0, ProcessAction.Suspend) { RequestId = 8 },
             new GetProcessStatesRequest([1234, 5678]) { RequestId = 10 },
+            new GetDriveHistoryRequest("C", 600) { RequestId = 12 },
             status,
             new ConfigResponse(config, "config.json was not valid JSON") { RequestId = 2 },
             new SetConfigResponse(false, ["History days must be at least 1 (got 0)."]) { RequestId = 3 },
@@ -121,6 +122,10 @@ public sealed class PipeProtocolTests
             new ProcessStatesResponse(new Dictionary<int, ProcessState> { [1234] = ProcessState.Running, [5678] = ProcessState.Exited })
             {
                 RequestId = 10,
+            },
+            new DriveHistoryResponse("C", [new DriveSample(T0, 10L << 30, 100L << 30), new DriveSample(T0.AddSeconds(1), 9L << 30, 100L << 30)])
+            {
+                RequestId = 12,
             },
             new AlertPush(alert),
             new AlertsChangedPush(),

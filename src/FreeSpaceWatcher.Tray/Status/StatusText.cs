@@ -119,5 +119,31 @@ public static class StatusText
     private static string FitTooltip(string text) =>
         text.Length <= MaxTooltipLength ? text : string.Concat(text.AsSpan(0, MaxTooltipLength - 1), "…");
 
-    private static bool IsLosing(double bytesPerSecond, long noiseFloorBytesPerMinute) => bytesPerSecond * 60 > noiseFloorBytesPerMinute;
+    /// <summary>Formats the status window's rate line: "Losing 11.2 GB/min · full in ~6 min", "Steady", or "Measuring…".</summary>
+    /// <param name="drive">The drive's status.</param>
+    /// <param name="noiseFloorBytesPerMinute">The loss rate at or below which the drive counts as steady.</param>
+    /// <returns>The line: losing (with the estimate, when there is one) past the noise floor, steady otherwise, or measuring while
+    /// the service has no rate yet.</returns>
+    public static string RateLine(DriveStatus drive, long noiseFloorBytesPerMinute)
+    {
+        ArgumentNullException.ThrowIfNull(drive);
+        if (drive.DropRateBytesPerSecond is not double rate)
+        {
+            return "Measuring…";
+        }
+
+        if (!IsLosing(rate, noiseFloorBytesPerMinute))
+        {
+            return "Steady";
+        }
+
+        string line = $"Losing {FormatRate(rate)}";
+        return drive.TimeToFull is TimeSpan eta ? $"{line} · full in {FormatEta(eta)}" : line;
+    }
+
+    /// <summary>Tells whether a drop rate is a loss faster than the noise floor.</summary>
+    /// <param name="bytesPerSecond">The drop rate in bytes per second (positive = losing space).</param>
+    /// <param name="noiseFloorBytesPerMinute">The noise floor in bytes per minute.</param>
+    /// <returns>Whether the drive is losing space faster than the noise floor.</returns>
+    public static bool IsLosing(double bytesPerSecond, long noiseFloorBytesPerMinute) => bytesPerSecond * 60 > noiseFloorBytesPerMinute;
 }

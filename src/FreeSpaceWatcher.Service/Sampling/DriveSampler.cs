@@ -24,6 +24,7 @@ namespace FreeSpaceWatcher.Service.Sampling;
 /// <param name="alerts">Turns firings into alerts.</param>
 /// <param name="hub">Receives the status snapshot every tick.</param>
 /// <param name="writes">Reports whether write tracing runs.</param>
+/// <param name="recent">Receives each watched drive's sample every tick, kept for the longer of 900 s and the rate window, for drive history requests.</param>
 /// <param name="logger">Receives drive transitions and tick failures.</param>
 public sealed partial class DriveSampler(
     ConfigService config,
@@ -31,6 +32,7 @@ public sealed partial class DriveSampler(
     AlertEngine alerts,
     StatusHub hub,
     IWriteSource writes,
+    RecentSamples recent,
     ILogger<DriveSampler> logger
 ) : BackgroundService
 {
@@ -40,6 +42,7 @@ public sealed partial class DriveSampler(
     private readonly Dictionary<string, SampleWindow> _windows = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, bool> _available = new(StringComparer.OrdinalIgnoreCase);
     private string _evaluatorKey = "";
+    private TimeSpan _historyKeep = RecentSamples.MinimumKeep;
 
     /// <inheritdoc/>
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -95,6 +98,7 @@ public sealed partial class DriveSampler(
         {
             evaluator?.MarkUnavailable();
             _windows.Remove(letter);
+            recent.Remove(letter);
             return Status(letter, watched, null, null);
         }
 
@@ -102,6 +106,7 @@ public sealed partial class DriveSampler(
         {
             SampleWindow window = WindowFor(letter);
             window.Add(sample, writeWindow);
+            recent.Add(letter, sample, _historyKeep);
             IReadOnlyList<TriggerFiring> firings = evaluator.Evaluate(sample, aggregator.Totals(letter[0], now));
             alerts.Raise(letter, sample, window.Samples, firings);
         }
@@ -188,7 +193,9 @@ public sealed partial class DriveSampler(
         _evaluatorKey = key;
         _evaluators.Clear();
         _windows.Clear();
+        recent.RetainOnly(watched);
         var rateWindow = TimeSpan.FromSeconds(settings.RateWindowSeconds);
+        _historyKeep = RecentSamples.KeepFor(rateWindow);
         var cooldown = TimeSpan.FromMinutes(settings.CooldownMinutes);
         foreach (string letter in watched)
         {

@@ -33,7 +33,7 @@
         </DataTrigger>
         <DataTrigger Binding="{Binding HasError}" Value="True">
           <Setter TargetName="Box" Property="BorderBrush" Value="Firebrick" />
-          <Setter TargetName="Box" Property="Background" Value="#FFFDECEA" />
+          <Setter TargetName="Box" Property="Background" Value="{DynamicResource SystemFillColorCriticalBackgroundBrush}" />
         </DataTrigger>
       </DataTemplate.Triggers>
     </DataTemplate>
@@ -53,7 +53,7 @@
   </Window.Resources>
 
   <DockPanel Margin="8">
-    <Border DockPanel.Dock="Top" Margin="0,0,0,8" Padding="6" Background="#FFFFF4CE">
+    <Border DockPanel.Dock="Top" Margin="0,0,0,8" Padding="6" Background="{DynamicResource SystemFillColorCautionBackgroundBrush}">
       <Border.Style>
         <Style TargetType="Border">
           <Setter Property="Visibility" Value="Collapsed" />

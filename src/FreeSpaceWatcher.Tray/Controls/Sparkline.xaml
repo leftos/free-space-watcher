@@ -1,0 +1,19 @@
+<UserControl
+  x:Class="FreeSpaceWatcher.Tray.Controls.Sparkline"
+  xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+  xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+  Height="56"
+  Background="Transparent"
+  ClipToBounds="True"
+>
+  <Canvas>
+    <Line
+      x:Name="FloorLine"
+      Stroke="{DynamicResource SystemFillColorCriticalBrush}"
+      StrokeThickness="1"
+      StrokeDashArray="4 3"
+      Visibility="Collapsed"
+    />
+    <Polyline x:Name="Trace" Stroke="{DynamicResource AccentFillColorDefaultBrush}" StrokeThickness="1.5" StrokeLineJoin="Round" />
+  </Canvas>
+</UserControl>

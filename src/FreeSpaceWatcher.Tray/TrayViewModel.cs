@@ -22,6 +22,9 @@ public interface ITrayShell
     /// <summary>Opens (or activates) the settings window.</summary>
     void ShowSettings();
 
+    /// <summary>Opens (or activates) the status window.</summary>
+    void ShowStatus();
+
     /// <summary>Shows a toast for a new alert.</summary>
     /// <param name="alert">The alert.</param>
     void ShowAlertToast(Alert alert);
@@ -76,6 +79,15 @@ public sealed partial class TrayViewModel(IServiceChannel channel, ITrayShell sh
     [NotifyPropertyChangedFor(nameof(State))]
     [NotifyCanExecuteChangedFor(nameof(AcknowledgeAllCommand))]
     public partial int UnacknowledgedCount { get; private set; }
+
+    /// <summary>Gets the latest status, or null while disconnected or before the first one arrives.</summary>
+    public StatusResponse? Status => _status;
+
+    /// <summary>Gets the configuration in use, or null until it is loaded.</summary>
+    public WatcherConfig? Config => _config;
+
+    /// <summary>Gets the alert list, or null until it is loaded.</summary>
+    public IReadOnlyList<AlertSummary>? Alerts => _alerts;
 
     /// <summary>Gets what the icon shows.</summary>
     public TrayState State =>
@@ -267,6 +279,9 @@ public sealed partial class TrayViewModel(IServiceChannel channel, ITrayShell sh
 
     [RelayCommand]
     private void ShowSettings() => shell.ShowSettings();
+
+    [RelayCommand]
+    private void ShowStatus() => shell.ShowStatus();
 
     [RelayCommand]
     private void Exit() => shell.Shutdown();
