@@ -35,6 +35,15 @@ public sealed record InputUnit(string Label, double Factor, bool WholeNumber, do
 
     /// <summary>Gets a whole count.</summary>
     public static InputUnit Count { get; } = new("", 1, true, int.MaxValue);
+
+    /// <summary>Gets the grace delay's whole seconds, from 0 (off) to 600.</summary>
+    public static InputUnit GraceSeconds { get; } = new("s", 1, true, 600) { AllowsZero = true };
+
+    /// <summary>Gets the auto-resolve window's whole minutes, from 0 (off) to 1440.</summary>
+    public static InputUnit ResolveMinutes { get; } = new("min", 1, true, 1440) { AllowsZero = true };
+
+    /// <summary>Gets whether 0 is accepted, for a setting that 0 turns off; otherwise values must be greater than 0.</summary>
+    public bool AllowsZero { get; init; }
 }
 
 /// <summary>The outcome of parsing a settings field.</summary>
@@ -79,9 +88,9 @@ public static class UnitInput
 
     private static ParsedInput Check(double typed, InputUnit unit)
     {
-        if (typed <= 0)
+        if (typed < 0 || (typed == 0 && !unit.AllowsZero))
         {
-            return new ParsedInput(null, "Must be greater than 0");
+            return new ParsedInput(null, unit.AllowsZero ? "Must be 0 or more" : "Must be greater than 0");
         }
 
         if (unit.Maximum is double maximum && typed > maximum)

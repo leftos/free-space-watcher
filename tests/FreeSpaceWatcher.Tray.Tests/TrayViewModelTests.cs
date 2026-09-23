@@ -90,6 +90,51 @@ public sealed class TrayViewModelTests
         Assert.Equal(1, tray.UnacknowledgedCount);
     }
 
+    [Fact]
+    public async Task AlertResolved_ThenAlertsChanged_NothingUnacknowledgedLeft_KeepsTheResolvedToast_RemovesTheSummary()
+    {
+        TrayViewModel tray = await LoadAsync(Summary("c1", "C", false));
+
+        tray.OnAlertResolved(FullAlert("c1", "C"));
+        _channel.Alerts = [Summary("c1", "C", true)];
+        await tray.OnAlertsChangedAsync();
+
+        Assert.Equal(["C"], _shell.ResolvedToastDrives);
+        Assert.Equal(0, _shell.RemoveAllCalls);
+        Assert.Empty(_shell.RemovedDrives);
+        Assert.Equal(1, _shell.RemoveSummaryCalls);
+        Assert.Equal(0, tray.UnacknowledgedCount);
+    }
+
+    [Fact]
+    public async Task AlertResolved_ThenAlertsChanged_OtherDriveStillAlerting_KeepsTheResolvedToast()
+    {
+        TrayViewModel tray = await LoadAsync(Summary("c1", "C", false), Summary("d1", "D", false));
+
+        tray.OnAlertResolved(FullAlert("c1", "C"));
+        _channel.Alerts = [Summary("c1", "C", true), Summary("d1", "D", false)];
+        await tray.OnAlertsChangedAsync();
+
+        Assert.Empty(_shell.RemovedDrives);
+        Assert.Equal(0, _shell.RemoveAllCalls);
+        Assert.Equal(0, _shell.RemoveSummaryCalls);
+    }
+
+    [Fact]
+    public async Task NewAlertAfterAResolvedToast_IsRemovedAgainOnceAcknowledged()
+    {
+        TrayViewModel tray = await LoadAsync(Summary("c1", "C", false), Summary("d1", "D", false));
+        tray.OnAlertResolved(FullAlert("c1", "C"));
+        _channel.Alerts = [Summary("c1", "C", true), Summary("c2", "C", false), Summary("d1", "D", false)];
+        await tray.OnAlertAsync(FullAlert("c2", "C"));
+
+        _channel.Alerts = [Summary("c1", "C", true), Summary("c2", "C", true), Summary("d1", "D", false)];
+        await tray.OnAlertsChangedAsync();
+
+        Assert.Equal(["C"], _shell.AlertToastDrives);
+        Assert.Equal(["C"], _shell.RemovedDrives);
+    }
+
     private async Task<TrayViewModel> LoadAsync(params AlertSummary[] alerts)
     {
         _channel.Alerts = alerts;
@@ -135,7 +180,17 @@ public sealed class TrayViewModelTests
 
         public void ShowStatus() => throw new InvalidOperationException("Unexpected ShowStatus");
 
-        public void ShowAlertToast(Alert alert) => throw new InvalidOperationException("Unexpected ShowAlertToast");
+        public List<string> AlertToastDrives { get; } = [];
+
+        public List<string> ResolvedToastDrives { get; } = [];
+
+        public int RemoveSummaryCalls { get; private set; }
+
+        public void ShowAlertToast(Alert alert) => AlertToastDrives.Add(alert.Drive);
+
+        public void ShowResolvedToast(Alert alert) => ResolvedToastDrives.Add(alert.Drive);
+
+        public void RemoveSummaryToast() => RemoveSummaryCalls++;
 
         public void ShowSummaryToast(int count) => throw new InvalidOperationException("Unexpected ShowSummaryToast");
 

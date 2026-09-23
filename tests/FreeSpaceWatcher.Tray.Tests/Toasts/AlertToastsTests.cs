@@ -100,7 +100,7 @@ public sealed class AlertToastsTests
             Acknowledged = acknowledged,
         };
 
-    private static Alert FullAlert(string id, string drive) =>
+    internal static Alert FullAlert(string id, string drive) =>
         new()
         {
             Id = id,

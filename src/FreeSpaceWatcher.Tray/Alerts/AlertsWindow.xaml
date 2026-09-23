@@ -39,6 +39,15 @@
             <TextBlock Text="{Binding DriveLabel}" />
           </Border>
           <TextBlock Margin="8,0,0,0" VerticalAlignment="Center" Style="{StaticResource CaptionText}" Text="{Binding TriggerName}" />
+          <Border
+            x:Name="ResolvedPill"
+            Margin="8,0,0,0"
+            Padding="6,0"
+            Style="{StaticResource SuccessPill}"
+            Visibility="{Binding IsResolved, Converter={StaticResource VisibleWhenTrue}}"
+          >
+            <TextBlock Text="Resolved" />
+          </Border>
         </StackPanel>
         <TextBlock
           Grid.Column="2"
@@ -66,6 +75,11 @@
       </Grid>
       <DataTemplate.Triggers>
         <DataTrigger Binding="{Binding IsUnacknowledged}" Value="False">
+          <Setter TargetName="Dot" Property="Fill" Value="{DynamicResource TextFillColorTertiaryBrush}" />
+          <Setter TargetName="Reason" Property="FontWeight" Value="Normal" />
+          <Setter TargetName="Reason" Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}" />
+        </DataTrigger>
+        <DataTrigger Binding="{Binding IsResolved}" Value="True">
           <Setter TargetName="Dot" Property="Fill" Value="{DynamicResource TextFillColorTertiaryBrush}" />
           <Setter TargetName="Reason" Property="FontWeight" Value="Normal" />
           <Setter TargetName="Reason" Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}" />
@@ -487,6 +501,23 @@
                         <Run Text="{Binding TriggerName, Mode=OneWay}" />
                       </TextBlock>
                     </StackPanel>
+                    <Border
+                      Margin="0,12,0,0"
+                      Style="{StaticResource SuccessInfoStrip}"
+                      ToolTip="{Binding ResolvedTime}"
+                      Visibility="{Binding IsResolved, Converter={StaticResource VisibleWhenTrue}}"
+                    >
+                      <DockPanel>
+                        <TextBlock
+                          DockPanel.Dock="Left"
+                          Margin="0,0,12,0"
+                          Foreground="{DynamicResource SystemFillColorSuccessBrush}"
+                          Style="{StaticResource GlyphText}"
+                          Text="&#xE73E;"
+                        />
+                        <TextBlock VerticalAlignment="Center" Style="{StaticResource BodyText}" Text="{Binding ResolvedText}" TextWrapping="Wrap" />
+                      </DockPanel>
+                    </Border>
                     <UniformGrid Margin="0,16,0,0" Columns="4">
                       <StackPanel>
                         <TextBlock Style="{StaticResource MetricLabel}" Text="Free" />

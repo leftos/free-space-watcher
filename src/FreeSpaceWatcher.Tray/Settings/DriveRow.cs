@@ -63,6 +63,12 @@ public sealed partial class DriveRow(string letter, IFormatProvider culture) : O
     /// <summary>Gets the process write volume override (GB).</summary>
     public NumberField ProcessWrite { get; } = new(InputUnit.Gigabytes, true, culture);
 
+    /// <summary>Gets the grace delay override (seconds, 0 = off).</summary>
+    public NumberField GraceDelay { get; } = new(InputUnit.GraceSeconds, true, culture);
+
+    /// <summary>Gets the auto-resolve window override (minutes, 0 = off).</summary>
+    public NumberField ResolveWindow { get; } = new(InputUnit.ResolveMinutes, true, culture);
+
     /// <summary>Gets or sets the drop-rate trigger override; null uses the default.</summary>
     [ObservableProperty]
     public partial bool? DropRateEnabled { get; set; }
@@ -80,7 +86,7 @@ public sealed partial class DriveRow(string letter, IFormatProvider culture) : O
     public partial bool? ProcessWriteEnabled { get; set; }
 
     /// <summary>Gets every override field.</summary>
-    public IReadOnlyList<NumberField> Fields => [DropRate, TimeToFull, NoiseFloor, FloorBytes, FloorPercent, ProcessWrite];
+    public IReadOnlyList<NumberField> Fields => [DropRate, TimeToFull, NoiseFloor, FloorBytes, FloorPercent, ProcessWrite, GraceDelay, ResolveWindow];
 
     private IReadOnlyList<bool?> Toggles => [DropRateEnabled, TimeToFullEnabled, FloorEnabled, ProcessWriteEnabled];
 
@@ -95,6 +101,8 @@ public sealed partial class DriveRow(string letter, IFormatProvider culture) : O
         FloorBytes.SetValue(overrides.FloorBytes);
         FloorPercent.SetValue(overrides.FloorPercent);
         ProcessWrite.SetValue(overrides.ProcessWriteBytes);
+        GraceDelay.SetValue(overrides.GraceSeconds);
+        ResolveWindow.SetValue(overrides.ResolveMinutes);
         DropRateEnabled = overrides.DropRateEnabled;
         TimeToFullEnabled = overrides.TimeToFullEnabled;
         FloorEnabled = overrides.FloorEnabled;
@@ -120,6 +128,8 @@ public sealed partial class DriveRow(string letter, IFormatProvider culture) : O
                 TimeToFullEnabled = TimeToFullEnabled,
                 FloorEnabled = FloorEnabled,
                 ProcessWriteEnabled = ProcessWriteEnabled,
+                GraceSeconds = (int?)GraceDelay.RoundedValue,
+                ResolveMinutes = (int?)ResolveWindow.RoundedValue,
             }
         );
 

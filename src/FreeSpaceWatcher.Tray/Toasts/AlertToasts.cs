@@ -137,6 +137,36 @@ public static class AlertToasts
     /// <param name="floorBytes">The drive's floor, for a floor alert's title, or null when the configuration is not known.</param>
     public static void ShowAlert(Alert alert, long? floorBytes) => Show(BuildAlert(alert, floorBytes), AlertSlot(alert));
 
+    /// <summary>
+    /// Replaces a resolved alert's toast with a silent one (see <see cref="ResolvedToastContent"/>): "C: resolved", the reason,
+    /// the alert's original title, and Details.
+    /// </summary>
+    /// <param name="alert">The resolved alert.</param>
+    /// <param name="floorBytes">The drive's floor, for a floor alert's title, or null when the configuration is not known.</param>
+    public static void ShowResolved(Alert alert, long? floorBytes) => Show(BuildResolved(alert, floorBytes), AlertSlot(alert));
+
+    /// <summary>Builds the resolved toast of an alert: its text, silent audio, and a Details button on the alert.</summary>
+    /// <param name="alert">The resolved alert.</param>
+    /// <param name="floorBytes">The drive's floor, for a floor alert's title, or null when the configuration is not known.</param>
+    /// <returns>The toast builder, not yet shown.</returns>
+    public static ToastContentBuilder BuildResolved(Alert alert, long? floorBytes)
+    {
+        var content = ResolvedToastContent.From(alert, floorBytes);
+        return new ToastContentBuilder()
+            .AddArgument(ToastRequest.ActionKey, ToastRequest.DetailsAction)
+            .AddArgument(ToastRequest.AlertIdKey, alert.Id)
+            .AddText(content.Title)
+            .AddText(content.Body)
+            .AddAttributionText(content.Attribution)
+            .AddAudio(new ToastAudio { Silent = true })
+            .AddButton(
+                new ToastButton()
+                    .SetContent("Details")
+                    .AddArgument(ToastRequest.ActionKey, ToastRequest.DetailsAction)
+                    .AddArgument(ToastRequest.AlertIdKey, alert.Id)
+            );
+    }
+
     /// <summary>Gets an alert drive's floor under a configuration: the larger of its byte and percentage floors.</summary>
     /// <param name="config">The configuration, or null when it is not loaded.</param>
     /// <param name="alert">The alert, whose drive size the percentage applies to.</param>
@@ -171,6 +201,9 @@ public static class AlertToasts
     /// <summary>Removes one drive's alert toast from Action Center.</summary>
     /// <param name="drive">The drive letter the toast is tagged with.</param>
     public static void RemoveForDrive(string drive) => ToastNotificationManagerCompat.History.Remove(drive, AlertsGroup);
+
+    /// <summary>Removes the summary toast from Action Center.</summary>
+    public static void RemoveSummary() => ToastNotificationManagerCompat.History.Remove(SummaryTag, AlertsGroup);
 
     /// <summary>
     /// Picks the drives whose alert toast goes after a change: each drive the alerts named before the change that has no

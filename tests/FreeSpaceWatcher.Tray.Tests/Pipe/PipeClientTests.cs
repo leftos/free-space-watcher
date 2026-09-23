@@ -43,6 +43,27 @@ public sealed class PipeClientTests
     }
 
     [Fact]
+    public async Task AlertResolvedPush_RaisesAlertResolved_WithTheAlert_AndLogsNothing()
+    {
+        CancellationToken ct = TestContext.Current.CancellationToken;
+        FakePipeServer server = new();
+        await using PipeClient client = new(server.Name, NormalTimeout, _log);
+        ClientEvents events = new(client);
+        client.Start();
+        await using FakePipeSession session = await server.AcceptAsync(ct);
+        await session.AnswerSubscribeAsync(ct);
+        Assert.True(await events.NextConnectionAsync(ct));
+        Alert resolved = NewAlert() with { ResolvedAt = NewAlert().Time.AddMinutes(2), ResolvedReason = "pwsh deleted 14.0 GB it had written" };
+
+        await session.SendAsync(new AlertResolvedPush(resolved), ct);
+
+        Alert raised = await events.NextResolvedAsync(ct);
+        Assert.Equal(resolved.Id, raised.Id);
+        Assert.Equal("pwsh deleted 14.0 GB it had written", raised.ResolvedReason);
+        Assert.Empty(_log.Lines);
+    }
+
+    [Fact]
     public async Task SendAsync_ServiceNeverAnswers_ThrowsTimeoutException()
     {
         CancellationToken ct = TestContext.Current.CancellationToken;

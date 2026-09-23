@@ -9,32 +9,35 @@ public sealed record WatcherConfig
     /// <summary>Gets the known drives and whether each is watched.</summary>
     public required List<DriveConfig> Drives { get; init; }
 
-    /// <summary>Gets the seconds between two free-space samples.</summary>
-    public int SampleIntervalSeconds { get; init; } = 1;
+    // The members below have setters, not init accessors: the JSON source generator assigns every init-only property of a type with
+    // required members in its object initializer, so a config.json that leaves one out would load it as 0 instead of its default.
 
-    /// <summary>Gets the length, in seconds, of the sample window the drop rate is fitted over.</summary>
-    public int RateWindowSeconds { get; init; } = 60;
+    /// <summary>Gets or sets the seconds between two free-space samples.</summary>
+    public int SampleIntervalSeconds { get; set; } = 1;
 
-    /// <summary>Gets the length, in seconds, of the write window.</summary>
-    public int WriteWindowSeconds { get; init; } = 300;
+    /// <summary>Gets or sets the length, in seconds, of the sample window the drop rate is fitted over.</summary>
+    public int RateWindowSeconds { get; set; } = 60;
 
-    /// <summary>Gets the minimum minutes between two alerts of the same trigger on the same drive.</summary>
-    public int CooldownMinutes { get; init; } = 10;
+    /// <summary>Gets or sets the length, in seconds, of the write window.</summary>
+    public int WriteWindowSeconds { get; set; } = 300;
 
-    /// <summary>Gets how many days alerts are kept in history.</summary>
-    public int HistoryDays { get; init; } = 30;
+    /// <summary>Gets or sets the minimum minutes between two alerts of the same trigger on the same drive.</summary>
+    public int CooldownMinutes { get; set; } = 10;
 
-    /// <summary>Gets how many distinct files are tracked per process before the rest fold into "other files in a folder".</summary>
-    public int PerProcessFileCap { get; init; } = 5000;
+    /// <summary>Gets or sets how many days alerts are kept in history.</summary>
+    public int HistoryDays { get; set; } = 30;
 
-    /// <summary>Gets how many processes an alert lists.</summary>
-    public int TopProcesses { get; init; } = 5;
+    /// <summary>Gets or sets how many distinct files are tracked per process before the rest fold into "other files in a folder".</summary>
+    public int PerProcessFileCap { get; set; } = 5000;
 
-    /// <summary>Gets how many folders an alert lists per process.</summary>
-    public int TopFolders { get; init; } = 10;
+    /// <summary>Gets or sets how many processes an alert lists.</summary>
+    public int TopProcesses { get; set; } = 5;
 
-    /// <summary>Gets how many files an alert lists per process.</summary>
-    public int TopFiles { get; init; } = 10;
+    /// <summary>Gets or sets how many folders an alert lists per process.</summary>
+    public int TopFolders { get; set; } = 10;
+
+    /// <summary>Gets or sets how many files an alert lists per process.</summary>
+    public int TopFiles { get; set; } = 10;
 
     /// <summary>Builds the default configuration: C: watched, every other fixed drive listed but not watched.</summary>
     /// <param name="fixedDriveLetters">The machine's fixed drives, as "D", "D:" or "D:\".</param>

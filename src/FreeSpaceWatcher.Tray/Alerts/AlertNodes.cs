@@ -25,6 +25,9 @@ public sealed partial class AlertListItem(AlertSummary summary, DateTimeOffset n
     /// <summary>Gets whether the alert is still unacknowledged; the list marks those with a critical dot and a semibold reason.</summary>
     public bool IsUnacknowledged => !Summary.Acknowledged;
 
+    /// <summary>Gets whether the alert resolved itself; the list marks those with a Resolved pill and secondary text.</summary>
+    public bool IsResolved => Summary.ResolvedAt is not null;
+
     /// <summary>Gets the drive chip's text, e.g. "C:".</summary>
     public string DriveLabel => Summary.Drive + ":";
 
@@ -74,14 +77,24 @@ public sealed record AlertDetails
     /// <summary>Gets whether the alert is acknowledged.</summary>
     public required bool Acknowledged { get; init; }
 
+    /// <summary>Gets the resolved strip's text, e.g. "Resolved 2 min ago: pwsh deleted 14.0 GB it had written", or null when the alert has not resolved.</summary>
+    public required string? ResolvedText { get; init; }
+
+    /// <summary>Gets when the alert resolved, in full, for the resolved strip's tooltip, or null when it has not.</summary>
+    public required string? ResolvedTime { get; init; }
+
     /// <summary>Gets the top writers, most bytes first.</summary>
     public required IReadOnlyList<ProcessNode> Processes { get; init; }
 
+    /// <summary>Gets whether the alert resolved itself.</summary>
+    public bool IsResolved => ResolvedText is not null;
+
     /// <summary>Builds the details of an alert.</summary>
     /// <param name="alert">The alert.</param>
-    /// <param name="zone">The time zone the alert's time is shown in.</param>
+    /// <param name="now">The time the details were loaded, which the resolved time counts from.</param>
+    /// <param name="zone">The time zone the alert's times are shown in.</param>
     /// <returns>The details.</returns>
-    public static AlertDetails From(Alert alert, TimeZoneInfo zone)
+    public static AlertDetails From(Alert alert, DateTimeOffset now, TimeZoneInfo zone)
     {
         ArgumentNullException.ThrowIfNull(alert);
         long topBytes = alert.Processes.Count == 0 ? 0 : alert.Processes.Max(p => p.BytesWritten);
@@ -104,8 +117,21 @@ public sealed record AlertDetails
             Eta = alert.TimeToFull is TimeSpan eta ? StatusText.FormatEta(eta) : StatusText.Unknown,
             Unattributed = ByteFormat.Format(alert.UnattributedBytes),
             Acknowledged = alert.Acknowledged,
+            ResolvedText = ResolvedTextOf(alert, now, zone),
+            ResolvedTime = alert.ResolvedAt is DateTimeOffset at ? AlertFormat.AbsoluteTime(at, zone, CultureInfo.CurrentCulture) : null,
             Processes = processes,
         };
+    }
+
+    private static string? ResolvedTextOf(Alert alert, DateTimeOffset now, TimeZoneInfo zone)
+    {
+        if (alert.ResolvedAt is not DateTimeOffset at)
+        {
+            return null;
+        }
+
+        string when = $"Resolved {AlertFormat.RelativeTime(at, now, zone, CultureInfo.CurrentCulture)}";
+        return string.IsNullOrWhiteSpace(alert.ResolvedReason) ? when : $"{when}: {alert.ResolvedReason}";
     }
 }
 
@@ -135,7 +161,10 @@ public sealed partial class ProcessNode(ProcessWriteReport report, long topWrite
     /// <summary>Gets the executable's path shortened in the middle to <see cref="AlertFormat.PathLength"/> characters, or an empty string.</summary>
     public string ShortExePath => AlertFormat.MiddleTrim(ExePath, AlertFormat.PathLength);
 
-    /// <summary>Gets the write summary, e.g. "1.0 GB written · 512.0 MB growth · 2 created"; zero growth and counts are left out.</summary>
+    /// <summary>
+    /// Gets the write summary, e.g. "1.0 GB written · 512.0 MB growth · 2 created · 14.0 GB removed"; zero growth, counts and removed
+    /// bytes are left out.
+    /// </summary>
     public string WriteSummary
     {
         get
@@ -154,6 +183,11 @@ public sealed partial class ProcessNode(ProcessWriteReport report, long topWrite
             if (Report.FilesDeleted > 0)
             {
                 parts.Add(string.Create(CultureInfo.InvariantCulture, $"{Report.FilesDeleted} deleted"));
+            }
+
+            if (Report.RemovedBytes > 0)
+            {
+                parts.Add($"{ByteFormat.Format(Report.RemovedBytes)} removed");
             }
 
             return string.Join(" · ", parts);

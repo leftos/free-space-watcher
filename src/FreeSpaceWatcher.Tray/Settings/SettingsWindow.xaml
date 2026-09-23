@@ -68,6 +68,16 @@
       <Setter Property="Orientation" Value="Horizontal" />
       <Setter Property="Margin" Value="0,0,0,12" />
     </Style>
+    <!-- The help under the Cleanup row: one caption line per setting. -->
+    <Style x:Key="CleanupHelp" TargetType="StackPanel">
+      <Setter Property="Margin" Value="0,4,0,0" />
+      <Style.Resources>
+        <Style TargetType="TextBlock" BasedOn="{StaticResource CaptionText}">
+          <Setter Property="TextWrapping" Value="Wrap" />
+          <Setter Property="Margin" Value="0,0,0,2" />
+        </Style>
+      </Style.Resources>
+    </Style>
 
     <!-- A drive's card: letter and label, the watch check box, the free-space bar, and its custom thresholds. -->
     <DataTemplate x:Key="DriveCard" DataType="{x:Type local:DriveRow}">
@@ -97,6 +107,7 @@
                 <ColumnDefinition Width="*" />
               </Grid.ColumnDefinitions>
               <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
@@ -139,7 +150,7 @@
                 <ContentControl Content="{Binding FloorPercent}" AutomationProperties.Name="Floor in percent" />
               </StackPanel>
               <TextBlock Grid.Row="4" Style="{StaticResource FormLabel}" Text="Process write" />
-              <StackPanel Grid.Row="4" Grid.Column="1" Style="{StaticResource FormRow}" Margin="0">
+              <StackPanel Grid.Row="4" Grid.Column="1" Style="{StaticResource FormRow}">
                 <ComboBox
                   Style="{StaticResource FormChoice}"
                   ItemsSource="{x:Static local:TriggerChoice.OverrideLabels}"
@@ -147,6 +158,20 @@
                   AutomationProperties.Name="Process write trigger"
                 />
                 <ContentControl Content="{Binding ProcessWrite}" AutomationProperties.Name="Process write" />
+              </StackPanel>
+              <TextBlock Grid.Row="5" Style="{StaticResource FormLabel}" Text="Cleanup" />
+              <StackPanel Grid.Row="5" Grid.Column="1">
+                <StackPanel Orientation="Horizontal">
+                  <TextBlock Style="{StaticResource FormLabel}" Text="Grace delay" />
+                  <ContentControl Content="{Binding GraceDelay}" AutomationProperties.Name="Grace delay" />
+                  <TextBlock Style="{StaticResource FormLabel}" Text="Auto-resolve window" />
+                  <ContentControl Content="{Binding ResolveWindow}" AutomationProperties.Name="Auto-resolve window" />
+                </StackPanel>
+                <StackPanel Style="{StaticResource CleanupHelp}">
+                  <TextBlock Text="A drop-rate or time-to-full alert waits this long, and is dropped if the writer deletes what it wrote." />
+                  <TextBlock Text="An alert is marked resolved if its writers delete what they wrote within this time." />
+                  <TextBlock Text="0 turns either off." />
+                </StackPanel>
               </StackPanel>
             </Grid>
           </Expander>
@@ -233,6 +258,7 @@
               <RowDefinition Height="Auto" />
               <RowDefinition Height="Auto" />
               <RowDefinition Height="Auto" />
+              <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
             <TextBlock Grid.Row="0" Style="{StaticResource FormLabel}" Text="Drop rate" />
             <StackPanel Grid.Row="0" Grid.Column="1" Style="{StaticResource FormRow}">
@@ -270,7 +296,7 @@
               <ContentControl Content="{Binding DefaultFloorPercent}" AutomationProperties.Name="Default floor in percent" />
             </StackPanel>
             <TextBlock Grid.Row="4" Style="{StaticResource FormLabel}" Text="Process write" />
-            <StackPanel Grid.Row="4" Grid.Column="1" Style="{StaticResource FormRow}" Margin="0">
+            <StackPanel Grid.Row="4" Grid.Column="1" Style="{StaticResource FormRow}">
               <ComboBox
                 Style="{StaticResource FormChoice}"
                 ItemsSource="{x:Static local:TriggerChoice.DefaultLabels}"
@@ -278,6 +304,20 @@
                 AutomationProperties.Name="Process write trigger by default"
               />
               <ContentControl Content="{Binding DefaultProcessWrite}" AutomationProperties.Name="Default process write" />
+            </StackPanel>
+            <TextBlock Grid.Row="5" Style="{StaticResource FormLabel}" Text="Cleanup" />
+            <StackPanel Grid.Row="5" Grid.Column="1">
+              <StackPanel Orientation="Horizontal">
+                <TextBlock Style="{StaticResource FormLabel}" Text="Grace delay" />
+                <ContentControl Content="{Binding DefaultGraceDelay}" AutomationProperties.Name="Default grace delay" />
+                <TextBlock Style="{StaticResource FormLabel}" Text="Auto-resolve window" />
+                <ContentControl Content="{Binding DefaultResolveWindow}" AutomationProperties.Name="Default auto-resolve window" />
+              </StackPanel>
+              <StackPanel Style="{StaticResource CleanupHelp}">
+                <TextBlock Text="A drop-rate or time-to-full alert waits this long, and is dropped if the writer deletes what it wrote." />
+                <TextBlock Text="An alert is marked resolved if its writers delete what they wrote within this time." />
+                <TextBlock Text="0 turns either off." />
+              </StackPanel>
             </StackPanel>
           </Grid>
         </Border>

@@ -47,6 +47,9 @@
   <Style x:Key="CriticalInfoStrip" TargetType="Border" BasedOn="{StaticResource InfoStrip}">
     <Setter Property="Background" Value="{DynamicResource SystemFillColorCriticalBackgroundBrush}" />
   </Style>
+  <Style x:Key="SuccessInfoStrip" TargetType="Border" BasedOn="{StaticResource InfoStrip}">
+    <Setter Property="Background" Value="{DynamicResource SystemFillColorSuccessBackgroundBrush}" />
+  </Style>
 
   <!-- A card: corner radius 8, the card background and stroke, 16 padding. -->
   <Style x:Key="Card" TargetType="Border">
@@ -76,6 +79,10 @@
   <Style x:Key="CautionPill" TargetType="Border" BasedOn="{StaticResource Pill}">
     <Setter Property="Background" Value="{DynamicResource SystemFillColorCautionBackgroundBrush}" />
     <Setter Property="TextElement.Foreground" Value="{DynamicResource SystemFillColorCautionBrush}" />
+  </Style>
+  <Style x:Key="SuccessPill" TargetType="Border" BasedOn="{StaticResource Pill}">
+    <Setter Property="Background" Value="{DynamicResource SystemFillColorSuccessBackgroundBrush}" />
+    <Setter Property="TextElement.Foreground" Value="{DynamicResource SystemFillColorSuccessBrush}" />
   </Style>
 
   <!--

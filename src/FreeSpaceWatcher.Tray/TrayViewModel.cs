@@ -29,6 +29,10 @@ public interface ITrayShell
     /// <param name="alert">The alert.</param>
     void ShowAlertToast(Alert alert);
 
+    /// <summary>Replaces a resolved alert's toast with the quiet resolved toast.</summary>
+    /// <param name="alert">The resolved alert.</param>
+    void ShowResolvedToast(Alert alert);
+
     /// <summary>Shows the summary toast for the unacknowledged alerts found on connect.</summary>
     /// <param name="count">How many alerts are unacknowledged.</param>
     void ShowSummaryToast(int count);
@@ -43,6 +47,9 @@ public interface ITrayShell
     /// <summary>Removes one drive's alert toast from Action Center.</summary>
     /// <param name="drive">The drive letter the toast is tagged with.</param>
     void RemoveAlertToast(string drive);
+
+    /// <summary>Removes the summary toast from Action Center.</summary>
+    void RemoveSummaryToast();
 
     /// <summary>Opens a folder in Explorer, reporting a failure to the user.</summary>
     /// <param name="folder">The folder.</param>
@@ -64,6 +71,7 @@ public interface ITrayShell
 /// <param name="log">Receives failed requests and process actions started from toasts.</param>
 public sealed partial class TrayViewModel(IServiceChannel channel, ITrayShell shell, ITrayLog log) : ObservableObject
 {
+    private readonly HashSet<string> _resolvedToastDrives = new(StringComparer.OrdinalIgnoreCase);
     private StatusResponse? _status;
     private WatcherConfig? _config;
     private IReadOnlyList<AlertSummary>? _alerts;
@@ -142,14 +150,28 @@ public sealed partial class TrayViewModel(IServiceChannel channel, ITrayShell sh
     /// <returns>A task that completes when the count is updated.</returns>
     public async Task OnAlertAsync(Alert alert)
     {
+        ArgumentNullException.ThrowIfNull(alert);
+        _resolvedToastDrives.Remove(alert.Drive);
         shell.ShowAlertToast(alert);
         await RefreshUnacknowledgedAsync();
     }
 
     /// <summary>
-    /// Recounts the unacknowledged alerts after alerts were acknowledged or deleted, and removes the alert toasts that no longer
-    /// apply: all of them when nothing is unacknowledged, otherwise the toast of each drive that has no unacknowledged alert
-    /// left, whether its alerts were acknowledged or deleted.
+    /// Replaces the drive's alert toast with the resolved toast, and keeps that toast through the alert changes the resolution
+    /// pushes next, until a new alert on the drive replaces it.
+    /// </summary>
+    /// <param name="alert">The resolved alert.</param>
+    public void OnAlertResolved(Alert alert)
+    {
+        ArgumentNullException.ThrowIfNull(alert);
+        shell.ShowResolvedToast(alert);
+        _resolvedToastDrives.Add(alert.Drive);
+    }
+
+    /// <summary>
+    /// Recounts the unacknowledged alerts after alerts were acknowledged, deleted or resolved, and removes the alert toasts that no
+    /// longer apply: all of them when nothing is unacknowledged, otherwise the toast of each drive that has no unacknowledged alert
+    /// left, whether its alerts were acknowledged or deleted. A drive whose toast is a resolved toast keeps it.
     /// </summary>
     /// <returns>A task that completes when the count and the toasts are updated.</returns>
     public async Task OnAlertsChangedAsync()
@@ -161,10 +183,15 @@ public sealed partial class TrayViewModel(IServiceChannel channel, ITrayShell sh
             return;
         }
 
-        if (unacknowledged == 0)
+        if (unacknowledged == 0 && _resolvedToastDrives.Count == 0)
         {
             shell.RemoveAlertToasts();
             return;
+        }
+
+        if (unacknowledged == 0)
+        {
+            shell.RemoveSummaryToast();
         }
 
         if (before is null)
@@ -172,7 +199,7 @@ public sealed partial class TrayViewModel(IServiceChannel channel, ITrayShell sh
             return;
         }
 
-        foreach (string drive in AlertToasts.DrivesToClear(before, after))
+        foreach (string drive in AlertToasts.DrivesToClear(before, after).Where(d => !_resolvedToastDrives.Contains(d)))
         {
             shell.RemoveAlertToast(drive);
         }

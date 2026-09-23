@@ -106,6 +106,91 @@ public sealed class SettingsConversionTests
         Assert.Equal(SampleConfig().PerProcessFileCap, config.PerProcessFileCap);
     }
 
+    [Theory]
+    [InlineData("0", 0)]
+    [InlineData("45", 45)]
+    [InlineData("600", 600)]
+    public void Parse_GraceSeconds_AcceptsZeroAsOff_UpTo600(string text, double seconds)
+    {
+        ParsedInput parsed = UnitInput.Parse(text, InputUnit.GraceSeconds, true, Invariant);
+
+        Assert.Null(parsed.Error);
+        Assert.Equal(seconds, parsed.Value);
+    }
+
+    [Theory]
+    [InlineData("-1", "Must be 0 or more")]
+    [InlineData("1.5", "Must be a whole number")]
+    [InlineData("1441", "Must be at most 1440")]
+    public void Parse_ResolveMinutes_RejectsNegativeFractionAndOverADay(string text, string error)
+    {
+        ParsedInput parsed = UnitInput.Parse(text, InputUnit.ResolveMinutes, true, Invariant);
+
+        Assert.Null(parsed.Value);
+        Assert.Equal(error, parsed.Error);
+    }
+
+    [Fact]
+    public void Parse_ZeroInAUnitWithoutOff_IsStillAnError() =>
+        Assert.Equal("Must be greater than 0", UnitInput.Parse("0", InputUnit.Seconds, false, Invariant).Error);
+
+    [Fact]
+    public void Load_ShowsCleanupDefaults_AndDriveOverridesWithTheDefaultsAsPlaceholders()
+    {
+        SettingsViewModel viewModel = NewViewModel(new FakeChannel(), []);
+        WatcherConfig config = SampleConfig() with
+        {
+            Drives = [new DriveConfig("C", true, new Thresholds { GraceSeconds = 0 }), new DriveConfig("D", false, new Thresholds())],
+        };
+
+        viewModel.Load(new ConfigResponse(config, null));
+
+        Assert.Equal("20", viewModel.DefaultGraceDelay.Text);
+        Assert.Equal("5", viewModel.DefaultResolveWindow.Text);
+        DriveRow c = viewModel.Drives[0];
+        Assert.Equal("0", c.GraceDelay.Text);
+        Assert.True(c.ThresholdsExpanded);
+        Assert.True(c.ResolveWindow.IsBlank);
+        Assert.Equal("5", c.ResolveWindow.Placeholder);
+        Assert.Equal("20", viewModel.Drives[1].GraceDelay.Placeholder);
+    }
+
+    [Fact]
+    public void BuildConfig_CleanupFields_ZeroTurnsOff_BlankOverrideUsesTheDefault()
+    {
+        SettingsViewModel viewModel = NewViewModel(new FakeChannel(), []);
+        viewModel.Load(new ConfigResponse(SampleConfig(), null));
+        viewModel.DefaultGraceDelay.Text = "0";
+        viewModel.DefaultResolveWindow.Text = "15";
+        DriveRow c = viewModel.Drives[0];
+        c.GraceDelay.Text = "45";
+        c.ResolveWindow.Text = "0";
+
+        WatcherConfig? config = viewModel.BuildConfig();
+
+        Assert.NotNull(config);
+        Assert.Equal((0, 15), (config.Defaults.GraceSeconds, config.Defaults.ResolveMinutes));
+        Assert.Equal((45, 0), (config.Drives[0].Overrides.GraceSeconds, config.Drives[0].Overrides.ResolveMinutes));
+        Assert.Equal((null, null), (config.Drives[1].Overrides.GraceSeconds, config.Drives[1].Overrides.ResolveMinutes));
+        Assert.Equal((0, 15), (config.For("D").GraceSeconds, config.For("D").ResolveMinutes));
+        Assert.Empty(ConfigValidator.Validate(config));
+    }
+
+    [Fact]
+    public void BuildConfig_CleanupFieldOutOfRange_IsAFieldError_AndBuildsNothing()
+    {
+        SettingsViewModel viewModel = NewViewModel(new FakeChannel(), []);
+        viewModel.Load(new ConfigResponse(SampleConfig(), null));
+
+        viewModel.Drives[0].GraceDelay.Text = "601";
+        viewModel.DefaultResolveWindow.Text = "";
+
+        Assert.Null(viewModel.BuildConfig());
+        Assert.Equal("Must be at most 600", viewModel.Drives[0].GraceDelay.Error);
+        Assert.Equal("Required", viewModel.DefaultResolveWindow.Error);
+        Assert.Equal(["Fix the highlighted fields before saving."], viewModel.Errors);
+    }
+
     [Fact]
     public async Task Save_InvalidText_ShowsFieldErrorAndSendsNothing()
     {

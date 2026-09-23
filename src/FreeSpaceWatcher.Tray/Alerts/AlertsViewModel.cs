@@ -235,7 +235,7 @@ public sealed partial class AlertsViewModel(IServiceChannel channel, IUserDialog
             return;
         }
 
-        Details = response.Alert is null ? null : AlertDetails.From(response.Alert, clock.LocalTimeZone);
+        Details = response.Alert is null ? null : AlertDetails.From(response.Alert, clock.GetUtcNow(), clock.LocalTimeZone);
         if (response.Alert is null)
         {
             ErrorMessage = $"Alert {alertId} is no longer in the history.";

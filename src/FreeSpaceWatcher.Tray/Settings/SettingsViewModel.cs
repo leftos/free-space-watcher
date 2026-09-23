@@ -33,6 +33,8 @@ public sealed partial class SettingsViewModel : ObservableObject
         DefaultFloorBytes = Required(InputUnit.Gigabytes);
         DefaultFloorPercent = Required(InputUnit.Percent);
         DefaultProcessWrite = Required(InputUnit.Gigabytes);
+        DefaultGraceDelay = Required(InputUnit.GraceSeconds);
+        DefaultResolveWindow = Required(InputUnit.ResolveMinutes);
         SampleInterval = Required(InputUnit.Seconds);
         RateWindow = Required(InputUnit.Seconds);
         WriteWindow = Required(InputUnit.Seconds);
@@ -97,6 +99,12 @@ public sealed partial class SettingsViewModel : ObservableObject
     /// <summary>Gets the default process write volume (GB).</summary>
     public NumberField DefaultProcessWrite { get; }
 
+    /// <summary>Gets the default grace delay (seconds, 0 = off).</summary>
+    public NumberField DefaultGraceDelay { get; }
+
+    /// <summary>Gets the default auto-resolve window (minutes, 0 = off).</summary>
+    public NumberField DefaultResolveWindow { get; }
+
     /// <summary>Gets or sets whether the drop-rate trigger is on by default.</summary>
     [ObservableProperty]
     public partial bool DefaultDropRateEnabled { get; set; }
@@ -138,7 +146,16 @@ public sealed partial class SettingsViewModel : ObservableObject
     public NumberField TopFiles { get; }
 
     private IReadOnlyList<NumberField> DefaultFields =>
-        [DefaultDropRate, DefaultTimeToFull, DefaultNoiseFloor, DefaultFloorBytes, DefaultFloorPercent, DefaultProcessWrite];
+        [
+            DefaultDropRate,
+            DefaultTimeToFull,
+            DefaultNoiseFloor,
+            DefaultFloorBytes,
+            DefaultFloorPercent,
+            DefaultProcessWrite,
+            DefaultGraceDelay,
+            DefaultResolveWindow,
+        ];
 
     private IReadOnlyList<NumberField> AdvancedFields =>
         [SampleInterval, RateWindow, WriteWindow, Cooldown, HistoryDays, TopProcesses, TopFolders, TopFiles];
@@ -218,6 +235,8 @@ public sealed partial class SettingsViewModel : ObservableObject
                 TimeToFullEnabled = DefaultTimeToFullEnabled,
                 FloorEnabled = DefaultFloorEnabled,
                 ProcessWriteEnabled = DefaultProcessWriteEnabled,
+                GraceSeconds = (int)WholeValue(DefaultGraceDelay),
+                ResolveMinutes = (int)WholeValue(DefaultResolveWindow),
             },
             Drives = [.. Drives.Select(r => r.ToConfig())],
             SampleIntervalSeconds = (int)WholeValue(SampleInterval),
@@ -256,6 +275,8 @@ public sealed partial class SettingsViewModel : ObservableObject
         DefaultFloorBytes.SetValue(defaults.FloorBytes);
         DefaultFloorPercent.SetValue(defaults.FloorPercent);
         DefaultProcessWrite.SetValue(defaults.ProcessWriteBytes);
+        DefaultGraceDelay.SetValue(defaults.GraceSeconds);
+        DefaultResolveWindow.SetValue(defaults.ResolveMinutes);
         DefaultDropRateEnabled = defaults.DropRateEnabled;
         DefaultTimeToFullEnabled = defaults.TimeToFullEnabled;
         DefaultFloorEnabled = defaults.FloorEnabled;
@@ -280,6 +301,8 @@ public sealed partial class SettingsViewModel : ObservableObject
             row.FloorBytes.Placeholder = DefaultFloorBytes.Text;
             row.FloorPercent.Placeholder = DefaultFloorPercent.Text;
             row.ProcessWrite.Placeholder = DefaultProcessWrite.Text;
+            row.GraceDelay.Placeholder = DefaultGraceDelay.Text;
+            row.ResolveWindow.Placeholder = DefaultResolveWindow.Text;
         }
     }
 

@@ -1,3 +1,4 @@
+using System.Globalization;
 using FreeSpaceWatcher.Core.Alerts;
 using FreeSpaceWatcher.Core.Ipc;
 using FreeSpaceWatcher.Core.Triggers;
@@ -34,11 +35,69 @@ public sealed class AlertNodesTests
     }
 
     [Fact]
+    public void ListItem_ResolvedAt_IsResolved_OtherwiseNot()
+    {
+        AlertSummary summary = new()
+        {
+            Id = "a",
+            Time = T0,
+            Drive = "C",
+            Trigger = TriggerKind.DropRate,
+            Reason = "C: losing 2.1 GB/min",
+            Acknowledged = true,
+        };
+
+        Assert.False(new AlertListItem(summary, T0, TimeZoneInfo.Utc).IsResolved);
+        Assert.True(new AlertListItem(summary with { ResolvedAt = T0.AddMinutes(1) }, T0, TimeZoneInfo.Utc).IsResolved);
+    }
+
+    [Fact]
+    public void Details_ResolvedAlert_StripSaysHowLongAgoAndWhy_WithTheAbsoluteTimeForItsTooltip()
+    {
+        DateTimeOffset resolvedAt = T0.AddMinutes(3);
+        Alert alert = Alert([]) with { ResolvedAt = resolvedAt, ResolvedReason = "pwsh deleted 14.0 GB it had written" };
+
+        var details = AlertDetails.From(alert, T0.AddMinutes(5), TimeZoneInfo.Utc);
+
+        Assert.True(details.IsResolved);
+        Assert.Equal("Resolved 2 min ago: pwsh deleted 14.0 GB it had written", details.ResolvedText);
+        Assert.Equal(AlertFormat.AbsoluteTime(resolvedAt, TimeZoneInfo.Utc, CultureInfo.CurrentCulture), details.ResolvedTime);
+    }
+
+    [Fact]
+    public void Details_ResolvedWithoutAReason_StripSaysOnlyWhen()
+    {
+        Alert alert = Alert([]) with { ResolvedAt = T0.AddMinutes(3) };
+
+        Assert.Equal("Resolved just now", AlertDetails.From(alert, T0.AddMinutes(3), TimeZoneInfo.Utc).ResolvedText);
+    }
+
+    [Fact]
+    public void Details_UnresolvedAlert_HasNoResolvedStrip()
+    {
+        var details = AlertDetails.From(Alert([]), T0.AddMinutes(5), TimeZoneInfo.Utc);
+
+        Assert.False(details.IsResolved);
+        Assert.Null(details.ResolvedText);
+        Assert.Null(details.ResolvedTime);
+    }
+
+    [Fact]
+    public void WriteSummary_RemovedBytes_AreListedLast_AndLeftOutWhenZero()
+    {
+        ProcessWriteReport cleaned = Writer(1, 14L << 30) with { ExtendBytes = 14L << 30, RemovedBytes = 14L << 30 };
+        ProcessWriteReport kept = Writer(2, 14L << 30) with { ExtendBytes = 14L << 30 };
+
+        Assert.Equal("14.0 GB written · 14.0 GB growth · 14.0 GB removed", ProcessNode.From(cleaned, 14L << 30, isTopWriter: true).WriteSummary);
+        Assert.Equal("14.0 GB written · 14.0 GB growth", ProcessNode.From(kept, 14L << 30, isTopWriter: true).WriteSummary);
+    }
+
+    [Fact]
     public void Details_HeaderValues_AndWritersRelativeToTheTopWriter()
     {
         Alert alert = Alert([Writer(1, 8L << 30), Writer(2, 2L << 30), Writer(3, 0)]);
 
-        var details = AlertDetails.From(alert, TimeZoneInfo.Utc);
+        var details = AlertDetails.From(alert, T0, TimeZoneInfo.Utc);
 
         Assert.Equal("C:", details.Drive);
         Assert.Equal("Drop rate", details.TriggerName);
@@ -51,7 +110,7 @@ public sealed class AlertNodesTests
     {
         Alert alert = Alert([Writer(1, 8L << 30), Writer(2, 2L << 30)]);
 
-        var details = AlertDetails.From(alert, TimeZoneInfo.Utc);
+        var details = AlertDetails.From(alert, T0, TimeZoneInfo.Utc);
 
         Assert.All(details.Processes[0].Children, g => Assert.True(g.IsExpanded));
         Assert.All(details.Processes[1].Children, g => Assert.False(g.IsExpanded));
@@ -60,7 +119,7 @@ public sealed class AlertNodesTests
     [Fact]
     public void Details_NoWriters_HasNoCards()
     {
-        var details = AlertDetails.From(Alert([]), TimeZoneInfo.Utc);
+        var details = AlertDetails.From(Alert([]), T0, TimeZoneInfo.Utc);
 
         Assert.Empty(details.Processes);
     }
@@ -68,7 +127,7 @@ public sealed class AlertNodesTests
     [Fact]
     public void Details_OneWriter_HidesTheWriterBar()
     {
-        var details = AlertDetails.From(Alert([Writer(1, 8L << 30)]), TimeZoneInfo.Utc);
+        var details = AlertDetails.From(Alert([Writer(1, 8L << 30)]), T0, TimeZoneInfo.Utc);
 
         Assert.All(details.Processes, p => Assert.False(p.ShowWriterBar));
     }
@@ -76,7 +135,7 @@ public sealed class AlertNodesTests
     [Fact]
     public void Details_TwoWriters_ShowTheWriterBar()
     {
-        var details = AlertDetails.From(Alert([Writer(1, 8L << 30), Writer(2, 2L << 30)]), TimeZoneInfo.Utc);
+        var details = AlertDetails.From(Alert([Writer(1, 8L << 30), Writer(2, 2L << 30)]), T0, TimeZoneInfo.Utc);
 
         Assert.All(details.Processes, p => Assert.True(p.ShowWriterBar));
     }

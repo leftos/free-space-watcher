@@ -20,7 +20,7 @@ Design: [free-space-watcher.md](./free-space-watcher.md) (the approved design; r
 - [x] 9. Tray crash on Acknowledge all (H.NotifyIcon disposes the previous icon) + unhandled-exception logging
 - [x] 10. UI design pass: make the tray windows look finished rather than scaffolded (user request 2026-09-23); runs after 9 — see [ui-design.md](./ui-design.md) (three passes; pass 1 brief `.tmp/briefs/task-12.md`)
 
-- [ ] 11. An app that cleans up after itself should not leave an alert: suppress it or auto-acknowledge it once the space comes back (user request 2026-09-23) — decided design in [auto-resolve.md](./auto-resolve.md); runs after UI pass 1
+- [x] 11. An app that cleans up after itself should not leave an alert: suppress it or auto-acknowledge it once the space comes back (user request 2026-09-23) — decided design in [auto-resolve.md](./auto-resolve.md); runs after UI pass 1
 
 ## Backlog
 

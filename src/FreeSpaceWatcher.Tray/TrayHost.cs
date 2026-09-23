@@ -73,6 +73,7 @@ public sealed class TrayHost : ITrayShell, IDisposable
         _client.StatusReceived += (_, status) => Post(() => OnStatus(status));
         _client.AlertReceived += (_, alert) => Post(() => OnAlertAsync(alert));
         _client.AlertsChanged += (_, _) => Post(OnAlertsChangedAsync);
+        _client.AlertResolved += (_, alert) => Post(() => _tray.OnAlertResolved(alert));
         ToastNotificationManagerCompat.OnActivated += OnToastActivated;
         SystemEvents.UserPreferenceChanged += OnUserPreferenceChanged;
         UpdateIcon();
@@ -152,6 +153,9 @@ public sealed class TrayHost : ITrayShell, IDisposable
     public void ShowAlertToast(Alert alert) => AlertToasts.ShowAlert(alert, AlertToasts.FloorBytes(_tray.Config, alert));
 
     /// <inheritdoc/>
+    public void ShowResolvedToast(Alert alert) => AlertToasts.ShowResolved(alert, AlertToasts.FloorBytes(_tray.Config, alert));
+
+    /// <inheritdoc/>
     public void ShowSummaryToast(int count) => AlertToasts.ShowSummary(count);
 
     /// <inheritdoc/>
@@ -162,6 +166,9 @@ public sealed class TrayHost : ITrayShell, IDisposable
 
     /// <inheritdoc/>
     public void RemoveAlertToast(string drive) => AlertToasts.RemoveForDrive(drive);
+
+    /// <inheritdoc/>
+    public void RemoveSummaryToast() => AlertToasts.RemoveSummary();
 
     /// <inheritdoc/>
     public void OpenFolder(string folder)

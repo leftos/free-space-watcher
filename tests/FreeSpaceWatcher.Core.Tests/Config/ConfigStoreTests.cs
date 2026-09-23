@@ -113,6 +113,35 @@ public sealed class ConfigStoreTests : IDisposable
     }
 
     [Fact]
+    public void FileWithOnlyDefaultsAndDrives_LoadsEveryOtherSettingAtItsDefault()
+    {
+        var expected = WatcherConfig.CreateDefault(FixedDrives);
+        new ConfigStore(ConfigPath).Save(expected);
+        JsonObject root = JsonNode.Parse(File.ReadAllText(ConfigPath))!.AsObject();
+        foreach (string key in root.Select(p => p.Key).Where(k => k is not ("defaults" or "drives")).ToList())
+        {
+            root.Remove(key);
+        }
+
+        Assert.Equal(["defaults", "drives"], root.Select(p => p.Key));
+        File.WriteAllText(ConfigPath, root.ToJsonString());
+
+        ConfigLoadResult result = new ConfigStore(ConfigPath).Load(FixedDrives);
+
+        Assert.True(result.Error is null, result.Error);
+        WatcherConfig loaded = result.Config;
+        Assert.Equal(expected.SampleIntervalSeconds, loaded.SampleIntervalSeconds);
+        Assert.Equal(expected.RateWindowSeconds, loaded.RateWindowSeconds);
+        Assert.Equal(expected.WriteWindowSeconds, loaded.WriteWindowSeconds);
+        Assert.Equal(expected.CooldownMinutes, loaded.CooldownMinutes);
+        Assert.Equal(expected.HistoryDays, loaded.HistoryDays);
+        Assert.Equal(expected.PerProcessFileCap, loaded.PerProcessFileCap);
+        Assert.Equal(expected.TopProcesses, loaded.TopProcesses);
+        Assert.Equal(expected.TopFolders, loaded.TopFolders);
+        Assert.Equal(expected.TopFiles, loaded.TopFiles);
+    }
+
+    [Fact]
     public void MalformedJson_RenamedToBad_ReturnsDefaults()
     {
         File.WriteAllText(ConfigPath, "{ not json");

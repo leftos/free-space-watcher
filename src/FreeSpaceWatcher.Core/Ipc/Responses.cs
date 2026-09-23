@@ -69,6 +69,9 @@ public sealed record AlertSummary
 
     /// <summary>Gets whether the user acknowledged the alert.</summary>
     public required bool Acknowledged { get; init; }
+
+    /// <summary>Gets when the alert resolved itself because its writers removed what they had written, or null when it has not.</summary>
+    public DateTimeOffset? ResolvedAt { get; init; }
 }
 
 /// <summary>One alert in full.</summary>

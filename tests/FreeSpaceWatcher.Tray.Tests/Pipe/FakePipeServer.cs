@@ -88,13 +88,17 @@ internal sealed class ClientEvents
     private readonly Channel<bool> _connections = Channel.CreateUnbounded<bool>();
     private readonly Channel<StatusResponse> _statuses = Channel.CreateUnbounded<StatusResponse>();
     private readonly Channel<Alert> _alerts = Channel.CreateUnbounded<Alert>();
+    private readonly Channel<Alert> _resolved = Channel.CreateUnbounded<Alert>();
 
     public ClientEvents(PipeClient client)
     {
         client.ConnectionChanged += (_, connected) => _connections.Writer.TryWrite(connected);
         client.StatusReceived += (_, status) => _statuses.Writer.TryWrite(status);
         client.AlertReceived += (_, alert) => _alerts.Writer.TryWrite(alert);
+        client.AlertResolved += (_, alert) => _resolved.Writer.TryWrite(alert);
     }
+
+    public Task<Alert> NextResolvedAsync(CancellationToken cancellationToken) => NextAsync(_resolved, cancellationToken);
 
     public Task<bool> NextConnectionAsync(CancellationToken cancellationToken) => NextAsync(_connections, cancellationToken);
 
