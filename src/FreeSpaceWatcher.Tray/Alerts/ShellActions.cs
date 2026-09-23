@@ -29,7 +29,8 @@ public interface IShellActions
 
 /// <summary>Starts Explorer and the elevation helper with argument lists, never through a command string.</summary>
 /// <param name="elevateHelperPath">The full path of FreeSpaceWatcher.Elevate.exe.</param>
-public sealed class ShellActions(string elevateHelperPath) : IShellActions
+/// <param name="log">Receives a cancelled UAC prompt.</param>
+public sealed class ShellActions(string elevateHelperPath, ITrayLog log) : IShellActions
 {
     /// <summary>The elevation helper's file name; it ships next to the tray executable.</summary>
     public const string ElevateHelperFileName = "FreeSpaceWatcher.Elevate.exe";
@@ -96,7 +97,7 @@ public sealed class ShellActions(string elevateHelperPath) : IShellActions
         }
         catch (Win32Exception ex) when (ex.NativeErrorCode == ErrorCancelled)
         {
-            TrayLog.Information($"The UAC prompt for {elevateHelperPath} was cancelled.", null);
+            log.Information($"The UAC prompt for {elevateHelperPath} was cancelled.", null);
             return null;
         }
         catch (Win32Exception ex)

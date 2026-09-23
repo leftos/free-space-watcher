@@ -8,13 +8,14 @@ namespace FreeSpaceWatcher.Tray.Tests.Pipe;
 public sealed class PipeClientTests
 {
     private static readonly TimeSpan NormalTimeout = TimeSpan.FromSeconds(10);
+    private readonly FakeTrayLog _log = new();
 
     [Fact]
     public async Task SendAsync_ResponsesOutOfOrderBetweenPushes_EachRequestGetsItsOwnResponse()
     {
         CancellationToken ct = TestContext.Current.CancellationToken;
         FakePipeServer server = new();
-        await using PipeClient client = new(server.Name, NormalTimeout);
+        await using PipeClient client = new(server.Name, NormalTimeout, _log);
         ClientEvents events = new(client);
         client.Start();
         await using FakePipeSession session = await server.AcceptAsync(ct);
@@ -46,7 +47,7 @@ public sealed class PipeClientTests
     {
         CancellationToken ct = TestContext.Current.CancellationToken;
         FakePipeServer server = new();
-        await using PipeClient client = new(server.Name, TimeSpan.FromMilliseconds(300));
+        await using PipeClient client = new(server.Name, TimeSpan.FromMilliseconds(300), _log);
         ClientEvents events = new(client);
         client.Start();
         await using FakePipeSession session = await server.AcceptAsync(ct);
@@ -57,6 +58,7 @@ public sealed class PipeClientTests
         Assert.IsType<ListAlertsRequest>(await session.ReceiveAsync(ct));
 
         await Assert.ThrowsAsync<TimeoutException>(() => pending);
+        Assert.Empty(_log.Lines);
     }
 
     [Fact]
@@ -64,7 +66,7 @@ public sealed class PipeClientTests
     {
         CancellationToken ct = TestContext.Current.CancellationToken;
         FakePipeServer server = new();
-        await using PipeClient client = new(server.Name, NormalTimeout);
+        await using PipeClient client = new(server.Name, NormalTimeout, _log);
         ClientEvents events = new(client);
         client.Start();
         await using (FakePipeSession first = await server.AcceptAsync(ct))
@@ -85,9 +87,10 @@ public sealed class PipeClientTests
     [Fact]
     public async Task SendAsync_NotConnected_ThrowsIOException()
     {
-        await using PipeClient client = new("FreeSpaceWatcher.Tests." + Guid.NewGuid().ToString("N"), NormalTimeout);
+        await using PipeClient client = new("FreeSpaceWatcher.Tests." + Guid.NewGuid().ToString("N"), NormalTimeout, _log);
 
         await Assert.ThrowsAsync<IOException>(() => client.SendAsync<StatusResponse>(new GetStatusRequest(), TestContext.Current.CancellationToken));
+        Assert.Empty(_log.Lines);
     }
 
     private static Alert NewAlert() =>

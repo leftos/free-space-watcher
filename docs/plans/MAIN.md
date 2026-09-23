@@ -14,15 +14,15 @@ Design: [free-space-watcher.md](./free-space-watcher.md) (the approved design; r
 
    - Done 2026-09-23: elevated ETW test (exact counts), install via sudo, three fill tests (alerts, toast replaced in place, suspend from toast, exact write/growth accounting, event log text). Not yet done: Resume from the new confirmation toast by hand, the alert with the tray closed, reboot, uninstall.
 
-- [ ] 8. Fix the four small backlog issues below (summary toast, tray.log in tests, process-state cap, second-instance config write) — user approved 2026-09-23; brief `.tmp/briefs/task-10.md`, runs after 7
+- [x] 8. Fix the four small backlog issues below (summary toast, tray.log in tests, process-state cap, second-instance config write) — user approved 2026-09-23; brief `.tmp/briefs/task-10.md`, runs after 7
 - [x] 7. Alerts UI: Acknowledge all, Clear (selected) and Clear all, as buttons and context-menu items (user request 2026-09-23)
 
 ## Backlog
 
-- [ ] The summary toast shown on connect has no Tag/Group, so summary toasts from repeated reconnects may stack (not verified).
-- [ ] Tray tests that hit failure paths write to the developer's real `%LOCALAPPDATA%\FreeSpaceWatcher\tray.log` because `TrayLog`'s path is fixed.
-- [ ] `GetProcessStatesRequest` has no cap on pids; each `QueryRunState` snapshots all processes (not measured).
-- [ ] A second service instance pointed at another data folder writes that folder's `config.json` before failing on the pipe (ConfigService is built before PipeServer starts).
+- [x] The summary toast shown on connect has no Tag/Group, so summary toasts from repeated reconnects may stack (not verified).
+- [x] Tray tests that hit failure paths write to the developer's real `%LOCALAPPDATA%\FreeSpaceWatcher\tray.log` because `TrayLog`'s path is fixed.
+- [x] `GetProcessStatesRequest` has no cap on pids; each `QueryRunState` snapshots all processes (not measured).
+- [x] A second service instance pointed at another data folder writes that folder's `config.json` before failing on the pipe (ConfigService is built before PipeServer starts).
 
 - [x] Process actions give no feedback, and suspends stack. In the second E2E fill (2026-09-23), the user pressed Resume and nothing visible happened; the process stayed suspended until a pipe-sent resume. Needed: a result shown for every action (window status line, and a confirmation toast for toast buttons); Suspend that does nothing on an already-suspended process and Resume that clears every suspend (NtSuspendProcess counts per call); the process's suspended state shown in the Alerts tree; tray-side logging of each action and its response.
 

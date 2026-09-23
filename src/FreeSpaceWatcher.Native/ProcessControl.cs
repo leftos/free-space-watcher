@@ -99,31 +99,42 @@ public static class ProcessControl
         try
         {
             using var process = Process.GetProcessById(processId);
-            ProcessThreadCollection threads = process.Threads;
-            if (threads.Count == 0)
-            {
-                return ProcessRunState.Exited;
-            }
-
-            foreach (ProcessThread thread in threads)
-            {
-                if (thread.ThreadState != System.Diagnostics.ThreadState.Wait || thread.WaitReason != ThreadWaitReason.Suspended)
-                {
-                    return ProcessRunState.Running;
-                }
-            }
-
-            return ProcessRunState.Suspended;
+            return RunStateOf(process);
         }
         catch (ArgumentException)
         {
             // GetProcessById throws ArgumentException when no process has the id.
             return ProcessRunState.Exited;
         }
-        catch (InvalidOperationException)
+    }
+
+    /// <summary>
+    /// Reads whether each of several processes is running, suspended or gone, from one snapshot of the system's process and
+    /// thread lists; needs no access to the processes.
+    /// </summary>
+    /// <param name="processIds">The process ids; a repeated id is read once.</param>
+    /// <returns>The state of each distinct id, as <see cref="QueryRunState"/> reads it; an id no process has reads as <see cref="ProcessRunState.Exited"/>.</returns>
+    public static IReadOnlyDictionary<int, ProcessRunState> QueryRunStates(IReadOnlyCollection<int> processIds)
+    {
+        ArgumentNullException.ThrowIfNull(processIds);
+        Process[] snapshot = Process.GetProcesses();
+        try
         {
-            // The process exited between the lookup and the thread read.
-            return ProcessRunState.Exited;
+            Dictionary<int, Process> byId = snapshot.ToDictionary(p => p.Id);
+            Dictionary<int, ProcessRunState> states = [];
+            foreach (int processId in processIds)
+            {
+                states[processId] = byId.TryGetValue(processId, out Process? process) ? RunStateOf(process) : ProcessRunState.Exited;
+            }
+
+            return states;
+        }
+        finally
+        {
+            foreach (Process process in snapshot)
+            {
+                process.Dispose();
+            }
         }
     }
 
@@ -181,6 +192,33 @@ public static class ProcessControl
         }
 
         return null;
+    }
+
+    private static ProcessRunState RunStateOf(Process process)
+    {
+        try
+        {
+            ProcessThreadCollection threads = process.Threads;
+            if (threads.Count == 0)
+            {
+                return ProcessRunState.Exited;
+            }
+
+            foreach (ProcessThread thread in threads)
+            {
+                if (thread.ThreadState != System.Diagnostics.ThreadState.Wait || thread.WaitReason != ThreadWaitReason.Suspended)
+                {
+                    return ProcessRunState.Running;
+                }
+            }
+
+            return ProcessRunState.Suspended;
+        }
+        catch (InvalidOperationException)
+        {
+            // The process exited between the lookup and the thread read.
+            return ProcessRunState.Exited;
+        }
     }
 
     private static ProcessControlResult ResumeFully(SafeProcessHandle handle, int processId)

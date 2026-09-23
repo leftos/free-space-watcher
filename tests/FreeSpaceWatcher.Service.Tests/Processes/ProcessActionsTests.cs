@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using FreeSpaceWatcher.Core.Ipc;
+using FreeSpaceWatcher.Service.Processes;
 using FreeSpaceWatcher.Service.Tests.Pipe;
 
 namespace FreeSpaceWatcher.Service.Tests.Processes;
@@ -151,6 +152,56 @@ public sealed class ProcessActionsTests
         {
             StopIfRunning(ping);
         }
+    }
+
+    [Fact]
+    public async Task GetProcessStates_ThreeProcesses_ReturnsThreeStates()
+    {
+        CancellationToken ct = TestContext.Current.CancellationToken;
+        await using PipeTestHarness harness = await PipeTestHarness.StartAsync(ct);
+        await using PipeTestClient client = await harness.ConnectAsync(ct);
+        using Process ping = StartPing();
+        try
+        {
+            // Windows process ids are multiples of 4, so no process has id 1.
+            ProcessStatesResponse response = await StatesAsync(client, [Environment.ProcessId, ping.Id, 1], ct);
+
+            Assert.Equal(3, response.States.Count);
+            Assert.Equal(ProcessState.Running, response.States[Environment.ProcessId]);
+            Assert.Equal(ProcessState.Running, response.States[ping.Id]);
+            Assert.Equal(ProcessState.Exited, response.States[1]);
+        }
+        finally
+        {
+            StopIfRunning(ping);
+        }
+    }
+
+    [Fact]
+    public async Task GetProcessStates_AtTheLimit_IsAnswered()
+    {
+        CancellationToken ct = TestContext.Current.CancellationToken;
+        await using PipeTestHarness harness = await PipeTestHarness.StartAsync(ct);
+        await using PipeTestClient client = await harness.ConnectAsync(ct);
+        int[] processIds = [.. Enumerable.Range(1, ProcessActions.MaxStateQueryProcessIds)];
+
+        ProcessStatesResponse response = await StatesAsync(client, processIds, ct);
+
+        Assert.Equal(ProcessActions.MaxStateQueryProcessIds, response.States.Count);
+    }
+
+    [Fact]
+    public async Task GetProcessStates_OverTheLimit_IsRejectedNamingTheLimit()
+    {
+        CancellationToken ct = TestContext.Current.CancellationToken;
+        await using PipeTestHarness harness = await PipeTestHarness.StartAsync(ct);
+        await using PipeTestClient client = await harness.ConnectAsync(ct);
+        int[] processIds = [.. Enumerable.Range(1, ProcessActions.MaxStateQueryProcessIds + 1)];
+
+        ErrorResponse error = await client.RequestAsync<ErrorResponse>(new GetProcessStatesRequest(processIds) { RequestId = 3 }, ct);
+
+        Assert.Equal(3, error.RequestId);
+        Assert.Equal("A process state request may name at most 256 processes; this one named 257.", error.Message);
     }
 
     private static Task<ProcessActionResponse> ActAsync(

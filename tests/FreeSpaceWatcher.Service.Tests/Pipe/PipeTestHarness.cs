@@ -28,7 +28,7 @@ internal sealed class PipeTestHarness : IAsyncDisposable
             new ProcessActions(NullLogger<ProcessActions>.Instance),
             NullLogger<PipeRequestHandler>.Instance
         );
-        _server = new PipeServer(handler, Hub, NullLogger<PipeServer>.Instance, PipeName);
+        _server = new PipeServer(handler, Hub, NullLogger<PipeServer>.Instance, PipeName, PipeServer.ClaimFirstInstance(PipeName));
     }
 
     public string PipeName { get; } = $"FreeSpaceWatcher.Tests.{Guid.NewGuid():N}";

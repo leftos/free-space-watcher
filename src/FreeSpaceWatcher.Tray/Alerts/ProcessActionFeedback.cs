@@ -63,26 +63,28 @@ public static class ProcessActionText
         };
 }
 
-/// <summary>Sends process actions to the service, logging each request and its response to the tray log.</summary>
+/// <summary>Sends process actions to the service, logging each request and its response.</summary>
 public static class ProcessActionSender
 {
     /// <summary>Sends a process action and waits for the service's answer.</summary>
     /// <param name="channel">The service connection.</param>
     /// <param name="request">The action.</param>
     /// <param name="name">The process name, for the log.</param>
+    /// <param name="log">Receives the request, the response or the failure.</param>
     /// <returns>The service's response.</returns>
     /// <exception cref="Exception">Any request failure of <see cref="IServiceChannel.SendAsync{TResponse}"/>, logged before it is rethrown.</exception>
-    public static async Task<ProcessActionResponse> SendAsync(IServiceChannel channel, ProcessActionRequest request, string name)
+    public static async Task<ProcessActionResponse> SendAsync(IServiceChannel channel, ProcessActionRequest request, string name, ITrayLog log)
     {
         ArgumentNullException.ThrowIfNull(channel);
         ArgumentNullException.ThrowIfNull(request);
+        ArgumentNullException.ThrowIfNull(log);
         string subject = $"Process action {request.Action} on {name} (pid {request.ProcessId})";
-        TrayLog.Information($"{subject} requested.", null);
+        log.Information($"{subject} requested.", null);
         try
         {
             ProcessActionResponse response = await channel.SendAsync<ProcessActionResponse>(request, CancellationToken.None);
             string state = response.State?.ToString() ?? "unknown";
-            TrayLog.Information(
+            log.Information(
                 $"{subject} answered: ok={response.Ok}, accessDenied={response.AccessDenied}, state={state}, error={response.Error ?? "none"}.",
                 null
             );
@@ -90,7 +92,7 @@ public static class ProcessActionSender
         }
         catch (Exception ex) when (PipeClient.IsRequestFailure(ex))
         {
-            TrayLog.Warning($"{subject} got no answer.", ex);
+            log.Warning($"{subject} got no answer.", ex);
             throw;
         }
     }

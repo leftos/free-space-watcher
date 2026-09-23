@@ -21,24 +21,33 @@ namespace FreeSpaceWatcher.Service.Pipe;
 /// <param name="hub">Supplies status and pushes.</param>
 /// <param name="logger">Receives connection and request failures.</param>
 /// <param name="pipeName">The pipe name; tests pass a unique one.</param>
-public sealed partial class PipeServer(PipeRequestHandler handler, StatusHub hub, ILogger<PipeServer> logger, string pipeName = PipeProtocol.PipeName)
-    : BackgroundService
+/// <param name="firstInstance">The pipe's first instance, from <see cref="ClaimFirstInstance"/>; the server owns and disposes it.</param>
+public sealed partial class PipeServer(
+    PipeRequestHandler handler,
+    StatusHub hub,
+    ILogger<PipeServer> logger,
+    string pipeName,
+    NamedPipeServerStream firstInstance
+) : BackgroundService
 {
     private static readonly TimeSpan FirstRetryDelay = TimeSpan.FromSeconds(1);
     private static readonly TimeSpan LongestRetryDelay = TimeSpan.FromMinutes(1);
     private readonly ConcurrentDictionary<int, Task> _clients = new();
-    private NamedPipeServerStream? _pending;
+    private NamedPipeServerStream? _pending = firstInstance;
     private int _nextClientId;
 
-    /// <summary>Creates the first pipe instance, so a second service instance fails at start rather than later.</summary>
-    /// <param name="cancellationToken">Cancels the start.</param>
-    /// <returns>A task that completes when the accept loop has started.</returns>
+    /// <summary>
+    /// Creates the pipe's first instance, so that a second service instance finds the pipe taken before it touches anything
+    /// else; works for any account, elevated or not.
+    /// </summary>
+    /// <param name="pipeName">The pipe name.</param>
+    /// <returns>The first instance, for the <see cref="PipeServer"/> constructor.</returns>
     /// <exception cref="PipeNameInUseException">Another process already serves the pipe.</exception>
-    public override Task StartAsync(CancellationToken cancellationToken)
+    public static NamedPipeServerStream ClaimFirstInstance(string pipeName)
     {
         try
         {
-            _pending = CreateInstance(firstInstance: true);
+            return CreateInstance(pipeName, firstInstance: true);
         }
         catch (Exception ex) when (ex is UnauthorizedAccessException or IOException)
         {
@@ -47,7 +56,13 @@ public sealed partial class PipeServer(PipeRequestHandler handler, StatusHub hub
                 ex
             );
         }
+    }
 
+    /// <summary>Starts the accept loop on the claimed first instance.</summary>
+    /// <param name="cancellationToken">Cancels the start.</param>
+    /// <returns>A task that completes when the accept loop has started.</returns>
+    public override Task StartAsync(CancellationToken cancellationToken)
+    {
         LogListening(logger, pipeName);
         return base.StartAsync(cancellationToken);
     }
@@ -116,7 +131,7 @@ public sealed partial class PipeServer(PipeRequestHandler handler, StatusHub hub
     private static PipeAccessRule Allow(WellKnownSidType sid, PipeAccessRights rights) =>
         new(new SecurityIdentifier(sid, null), rights, AccessControlType.Allow);
 
-    private NamedPipeServerStream CreateInstance(bool firstInstance) =>
+    private static NamedPipeServerStream CreateInstance(string pipeName, bool firstInstance) =>
         NamedPipeServerStreamAcl.Create(
             pipeName,
             PipeDirection.InOut,
@@ -133,7 +148,7 @@ public sealed partial class PipeServer(PipeRequestHandler handler, StatusHub hub
         NamedPipeServerStream? pipe = null;
         try
         {
-            pipe = Interlocked.Exchange(ref _pending, null) ?? CreateInstance(firstInstance: false);
+            pipe = Interlocked.Exchange(ref _pending, null) ?? CreateInstance(pipeName, firstInstance: false);
             await pipe.WaitForConnectionAsync(stoppingToken).ConfigureAwait(false);
             return pipe;
         }

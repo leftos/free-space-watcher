@@ -16,7 +16,8 @@ namespace FreeSpaceWatcher.Tray.Pipe;
 /// </remarks>
 /// <param name="pipeName">The pipe name; tests pass a unique one.</param>
 /// <param name="requestTimeout">How long <see cref="SendAsync{TResponse}"/> waits for a response.</param>
-public sealed class PipeClient(string pipeName, TimeSpan requestTimeout) : IServiceChannel, IAsyncDisposable
+/// <param name="log">Receives refused connections, failed subscriptions, closed pipes and messages the client ignores.</param>
+public sealed class PipeClient(string pipeName, TimeSpan requestTimeout, ITrayLog log) : IServiceChannel, IAsyncDisposable
 {
     /// <summary>The response timeout the tray uses.</summary>
     public static readonly TimeSpan DefaultRequestTimeout = TimeSpan.FromSeconds(10);
@@ -157,7 +158,7 @@ public sealed class PipeClient(string pipeName, TimeSpan requestTimeout) : IServ
             await pipe.DisposeAsync().ConfigureAwait(false);
             if (ex is UnauthorizedAccessException)
             {
-                TrayLog.Warning($"Connecting to pipe '{pipeName}' was refused.", ex);
+                log.Warning($"Connecting to pipe '{pipeName}' was refused.", ex);
             }
 
             return false;
@@ -180,7 +181,7 @@ public sealed class PipeClient(string pipeName, TimeSpan requestTimeout) : IServ
         }
         catch (Exception ex) when (IsRequestFailure(ex) || ex is OperationCanceledException)
         {
-            TrayLog.Warning($"Subscribing to pipe '{pipeName}' failed.", ex);
+            log.Warning($"Subscribing to pipe '{pipeName}' failed.", ex);
             await pipe.DisposeAsync().ConfigureAwait(false);
         }
 
@@ -210,7 +211,7 @@ public sealed class PipeClient(string pipeName, TimeSpan requestTimeout) : IServ
         }
         catch (Exception ex) when (ex is IOException or ObjectDisposedException or OperationCanceledException)
         {
-            TrayLog.Information($"Pipe '{pipeName}' closed: {ex.Message}", null);
+            log.Information($"Pipe '{pipeName}' closed: {ex.Message}", null);
         }
     }
 
@@ -223,7 +224,7 @@ public sealed class PipeClient(string pipeName, TimeSpan requestTimeout) : IServ
         }
         catch (InvalidDataException ex)
         {
-            TrayLog.Warning($"Ignoring a malformed message from pipe '{pipeName}'.", ex);
+            log.Warning($"Ignoring a malformed message from pipe '{pipeName}'.", ex);
             return;
         }
 
@@ -245,7 +246,7 @@ public sealed class PipeClient(string pipeName, TimeSpan requestTimeout) : IServ
                 }
                 else
                 {
-                    TrayLog.Warning($"Ignoring {message.GetType().Name} {message.RequestId}: no request is waiting for it.", null);
+                    log.Warning($"Ignoring {message.GetType().Name} {message.RequestId}: no request is waiting for it.", null);
                 }
 
                 break;

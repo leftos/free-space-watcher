@@ -37,22 +37,41 @@ public sealed partial class ProcessActions(ILogger<ProcessActions> logger)
         return new ProcessActionResponse(result.Ok, result.AccessDenied, result.Error, state);
     }
 
-    /// <summary>Reads whether each process is running, suspended or gone; a read-only query, so it runs as the service.</summary>
-    /// <param name="processIds">The process ids.</param>
-    /// <returns>The state of each distinct process id, without a request id.</returns>
-    public static ProcessStatesResponse QueryStates(IReadOnlyList<int> processIds)
+    /// <summary>The most process ids one <see cref="GetProcessStatesRequest"/> may name.</summary>
+    public const int MaxStateQueryProcessIds = 256;
+
+    /// <summary>
+    /// Reads whether each process is running, suspended or gone, from one snapshot of the system's processes; a read-only query,
+    /// so it runs as the service.
+    /// </summary>
+    /// <param name="processIds">The process ids; at most <see cref="MaxStateQueryProcessIds"/>, repeats included.</param>
+    /// <returns>
+    /// The state of each distinct process id, or an <see cref="ErrorResponse"/> naming the limit when there are more than
+    /// <see cref="MaxStateQueryProcessIds"/> ids; without a request id.
+    /// </returns>
+    public static PipeMessage QueryStates(IReadOnlyList<int> processIds)
     {
         ArgumentNullException.ThrowIfNull(processIds);
-        return new ProcessStatesResponse(processIds.Distinct().ToDictionary(pid => pid, QueryState));
+        if (processIds.Count > MaxStateQueryProcessIds)
+        {
+            return new ErrorResponse(
+                $"A process state request may name at most {MaxStateQueryProcessIds} processes; this one named {processIds.Count}."
+            );
+        }
+
+        IReadOnlyDictionary<int, ProcessRunState> states = ProcessControl.QueryRunStates(processIds);
+        return new ProcessStatesResponse(states.ToDictionary(entry => entry.Key, entry => ToState(entry.Value)));
     }
 
-    private static ProcessState QueryState(int processId) =>
-        ProcessControl.QueryRunState(processId) switch
+    private static ProcessState QueryState(int processId) => ToState(ProcessControl.QueryRunState(processId));
+
+    private static ProcessState ToState(ProcessRunState state) =>
+        state switch
         {
             ProcessRunState.Running => ProcessState.Running,
             ProcessRunState.Suspended => ProcessState.Suspended,
             ProcessRunState.Exited => ProcessState.Exited,
-            ProcessRunState state => throw new ArgumentOutOfRangeException(nameof(processId), state, "Unknown process run state."),
+            _ => throw new ArgumentOutOfRangeException(nameof(state), state, "Unknown process run state."),
         };
 
     private static ProcessControlAction ToNative(ProcessAction action) =>

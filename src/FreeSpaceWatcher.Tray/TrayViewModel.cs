@@ -58,7 +58,8 @@ public interface ITrayShell
 /// <remarks>Every member is called on the UI thread.</remarks>
 /// <param name="channel">The service connection.</param>
 /// <param name="shell">Windows, toasts and exiting.</param>
-public sealed partial class TrayViewModel(IServiceChannel channel, ITrayShell shell) : ObservableObject
+/// <param name="log">Receives failed requests and process actions started from toasts.</param>
+public sealed partial class TrayViewModel(IServiceChannel channel, ITrayShell shell, ITrayLog log) : ObservableObject
 {
     private StatusResponse? _status;
     private WatcherConfig? _config;
@@ -125,8 +126,8 @@ public sealed partial class TrayViewModel(IServiceChannel channel, ITrayShell sh
 
     /// <summary>
     /// Recounts the unacknowledged alerts after alerts were acknowledged or deleted, and removes the alert toasts that no longer
-    /// apply: all of them when nothing is unacknowledged, otherwise the toast of each drive that lost an alert and has no
-    /// unacknowledged alert left.
+    /// apply: all of them when nothing is unacknowledged, otherwise the toast of each drive that has no unacknowledged alert
+    /// left, whether its alerts were acknowledged or deleted.
     /// </summary>
     /// <returns>A task that completes when the count and the toasts are updated.</returns>
     public async Task OnAlertsChangedAsync()
@@ -214,7 +215,7 @@ public sealed partial class TrayViewModel(IServiceChannel channel, ITrayShell sh
         string? error;
         try
         {
-            ProcessActionResponse response = await ProcessActionSender.SendAsync(channel, message, name);
+            ProcessActionResponse response = await ProcessActionSender.SendAsync(channel, message, name, log);
             if (response.AccessDenied)
             {
                 AlertsViewModel alerts = await shell.ShowAlertsAsync(request.AlertId);
@@ -251,7 +252,7 @@ public sealed partial class TrayViewModel(IServiceChannel channel, ITrayShell sh
         }
         catch (Exception ex) when (PipeClient.IsRequestFailure(ex))
         {
-            TrayLog.Warning($"{request.GetType().Name} failed.", ex);
+            log.Warning($"{request.GetType().Name} failed.", ex);
             return null;
         }
     }

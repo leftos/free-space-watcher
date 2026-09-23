@@ -155,7 +155,7 @@ public sealed class AlertsViewModelTests
     private async Task<AlertsViewModel> LoadAsync(params AlertSummary[] alerts)
     {
         _channel.Alerts = alerts;
-        AlertsViewModel viewModel = new(_channel, _dialogs, new FakeShell());
+        AlertsViewModel viewModel = new(_channel, _dialogs, new FakeShell(), new FakeTrayLog());
         await viewModel.SelectAlertAsync(null);
         return viewModel;
     }

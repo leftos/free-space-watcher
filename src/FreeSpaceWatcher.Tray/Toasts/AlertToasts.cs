@@ -90,76 +90,86 @@ public sealed record ProcessActionToast
     public required string? Error { get; init; }
 }
 
+/// <summary>Where a toast sits in Action Center: a newer toast with the same tag and group replaces it, and removing the group removes it.</summary>
+/// <param name="Tag">The toast's tag.</param>
+/// <param name="Group">The toast's group.</param>
+public sealed record ToastSlot(string Tag, string Group);
+
 /// <summary>
 /// Shows the toasts: one per pushed alert, replacing the previous one for the same drive; one summary for the unacknowledged
-/// alerts found on connect; and one per process action started from a toast, replacing the previous one for the same process.
-/// Removes alert toasts from Action Center once their alerts are acknowledged or deleted.
+/// alerts found on connect, replacing the previous summary; and one per process action started from a toast, replacing the
+/// previous one for the same process. Removes alert toasts from Action Center once their alerts are acknowledged or deleted.
 /// </summary>
 public static class AlertToasts
 {
-    /// <summary>The toast group of alert toasts, whose tag is the drive letter.</summary>
+    /// <summary>The toast group of alert toasts, whose tag is the drive letter, and of the summary toast, tagged <see cref="SummaryTag"/>.</summary>
     public const string AlertsGroup = "alerts";
 
     /// <summary>The toast group of process action toasts, whose tag is "action-" and the process id.</summary>
     public const string ActionsGroup = "actions";
 
+    /// <summary>The summary toast's tag; no drive letter is this long, so it never replaces an alert toast.</summary>
+    public const string SummaryTag = "summary";
+
+    /// <summary>Gets the summary toast's slot: in <see cref="AlertsGroup"/>, so clearing the alert toasts clears it too.</summary>
+    public static ToastSlot SummarySlot { get; } = new(SummaryTag, AlertsGroup);
+
+    /// <summary>Gets an alert toast's slot: tagged with the alert's drive letter, in <see cref="AlertsGroup"/>.</summary>
+    /// <param name="alert">The alert.</param>
+    /// <returns>The slot.</returns>
+    public static ToastSlot AlertSlot(Alert alert)
+    {
+        ArgumentNullException.ThrowIfNull(alert);
+        return new ToastSlot(alert.Drive, AlertsGroup);
+    }
+
+    /// <summary>Gets a process action toast's slot: tagged "action-" and the process id, in <see cref="ActionsGroup"/>.</summary>
+    /// <param name="processId">The process id.</param>
+    /// <returns>The slot.</returns>
+    public static ToastSlot ProcessActionSlot(int processId) => new(string.Create(CultureInfo.InvariantCulture, $"action-{processId}"), ActionsGroup);
+
     /// <summary>Shows a toast for a new alert: the reason, the top writer and its top folder, and Details / Suspend / Open folder.</summary>
     /// <param name="alert">The alert.</param>
-    public static void ShowAlert(Alert alert) =>
-        BuildAlert(alert)
-            .Show(toast =>
-            {
-                toast.Tag = alert.Drive;
-                toast.Group = AlertsGroup;
-            });
+    public static void ShowAlert(Alert alert) => Show(BuildAlert(alert), AlertSlot(alert));
 
     /// <summary>
     /// Shows the outcome of a process action started from a toast: "Suspended pwsh (pid 41372)" with Resume and Details, or the
     /// error with Details.
     /// </summary>
     /// <param name="outcome">The outcome.</param>
-    public static void ShowProcessAction(ProcessActionToast outcome) =>
-        BuildProcessAction(outcome)
-            .Show(toast =>
-            {
-                toast.Tag = string.Create(CultureInfo.InvariantCulture, $"action-{outcome.ProcessId}");
-                toast.Group = ActionsGroup;
-            });
+    public static void ShowProcessAction(ProcessActionToast outcome) => Show(BuildProcessAction(outcome), ProcessActionSlot(outcome.ProcessId));
 
-    /// <summary>Shows one toast for the unacknowledged alerts found on connect.</summary>
+    /// <summary>Shows one toast for the unacknowledged alerts found on connect, replacing the previous one.</summary>
     /// <param name="count">How many alerts are unacknowledged.</param>
     public static void ShowSummary(int count) =>
-        new ToastContentBuilder()
-            .AddArgument(ToastRequest.ActionKey, ToastRequest.SummaryAction)
-            .AddText(SummaryText(count))
-            .AddButton(new ToastButton().SetContent("Details").AddArgument(ToastRequest.ActionKey, ToastRequest.SummaryAction))
-            .Show();
+        Show(
+            new ToastContentBuilder()
+                .AddArgument(ToastRequest.ActionKey, ToastRequest.SummaryAction)
+                .AddText(SummaryText(count))
+                .AddButton(new ToastButton().SetContent("Details").AddArgument(ToastRequest.ActionKey, ToastRequest.SummaryAction)),
+            SummarySlot
+        );
 
-    /// <summary>Removes every alert toast from Action Center.</summary>
+    /// <summary>Removes every alert toast, and the summary toast, from Action Center.</summary>
     public static void RemoveAll() => ToastNotificationManagerCompat.History.RemoveGroup(AlertsGroup);
 
     /// <summary>Removes one drive's alert toast from Action Center.</summary>
     /// <param name="drive">The drive letter the toast is tagged with.</param>
     public static void RemoveForDrive(string drive) => ToastNotificationManagerCompat.History.Remove(drive, AlertsGroup);
 
-    /// <summary>Picks the drives whose alert toast goes after a change: each drive that lost an alert and has no unacknowledged alert left.</summary>
+    /// <summary>
+    /// Picks the drives whose alert toast goes after a change: each drive the alerts named before the change that has no
+    /// unacknowledged alert after it, whether its alerts were acknowledged or deleted.
+    /// </summary>
     /// <param name="before">The alerts before the change.</param>
     /// <param name="after">The alerts after the change.</param>
-    /// <returns>The drive letters, as the alerts name them.</returns>
+    /// <returns>The drive letters, once each, as the alerts before the change name them.</returns>
     public static IReadOnlyList<string> DrivesToClear(IReadOnlyList<AlertSummary> before, IReadOnlyList<AlertSummary> after)
     {
         ArgumentNullException.ThrowIfNull(before);
         ArgumentNullException.ThrowIfNull(after);
-        HashSet<string> remainingIds = new(after.Select(a => a.Id), StringComparer.Ordinal);
         HashSet<string> alertingDrives = new(after.Where(a => !a.Acknowledged).Select(a => a.Drive), StringComparer.OrdinalIgnoreCase);
-        return
-        [
-            .. before
-                .Where(a => !remainingIds.Contains(a.Id))
-                .Select(a => a.Drive)
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .Where(drive => !alertingDrives.Contains(drive)),
-        ];
+        return [.. before.Select(a => a.Drive).Distinct(StringComparer.OrdinalIgnoreCase).Where(drive => !alertingDrives.Contains(drive))];
     }
 
     /// <summary>Formats the summary toast's text, e.g. "3 unacknowledged disk alerts".</summary>
@@ -272,6 +282,13 @@ public static class AlertToasts
 
         return button;
     }
+
+    private static void Show(ToastContentBuilder builder, ToastSlot slot) =>
+        builder.Show(toast =>
+        {
+            toast.Tag = slot.Tag;
+            toast.Group = slot.Group;
+        });
 
     private static ProcessWriteReport? TopWriter(Alert alert) => alert.Processes.Count > 0 ? alert.Processes[0] : null;
 

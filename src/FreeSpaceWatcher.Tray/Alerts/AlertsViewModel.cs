@@ -14,7 +14,8 @@ namespace FreeSpaceWatcher.Tray.Alerts;
 /// <param name="channel">The service connection.</param>
 /// <param name="dialogs">Confirmations and error messages.</param>
 /// <param name="shell">Explorer and the elevation helper.</param>
-public sealed partial class AlertsViewModel(IServiceChannel channel, IUserDialogs dialogs, IShellActions shell) : ObservableObject
+/// <param name="log">Receives each process action and its outcome.</param>
+public sealed partial class AlertsViewModel(IServiceChannel channel, IUserDialogs dialogs, IShellActions shell, ITrayLog log) : ObservableObject
 {
     private string? _statusAlertId;
 
@@ -87,7 +88,7 @@ public sealed partial class AlertsViewModel(IServiceChannel channel, IUserDialog
         ProcessActionResponse response;
         try
         {
-            response = await ProcessActionSender.SendAsync(channel, request, processName);
+            response = await ProcessActionSender.SendAsync(channel, request, processName, log);
         }
         catch (Exception ex) when (PipeClient.IsRequestFailure(ex))
         {

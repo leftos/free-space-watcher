@@ -21,9 +21,10 @@ public sealed class TrayHost : ITrayShell, IDisposable
 {
     private static readonly TimeSpan ShutdownWait = TimeSpan.FromSeconds(2);
     private readonly Dispatcher _dispatcher;
-    private readonly PipeClient _client = new(PipeProtocol.PipeName, PipeClient.DefaultRequestTimeout);
+    private readonly ITrayLog _log;
+    private readonly PipeClient _client;
     private readonly MessageBoxDialogs _dialogs = new();
-    private readonly ShellActions _shellActions = new(ShellActions.DefaultElevateHelperPath);
+    private readonly ShellActions _shellActions;
     private readonly Dictionary<TrayState, DrawingIcon> _icons;
     private readonly TrayViewModel _tray;
     private readonly TaskbarIcon _taskbarIcon;
@@ -32,11 +33,15 @@ public sealed class TrayHost : ITrayShell, IDisposable
 
     /// <summary>Initializes the host; nothing is shown or connected until <see cref="Start"/>.</summary>
     /// <param name="dispatcher">The UI thread's dispatcher.</param>
-    public TrayHost(Dispatcher dispatcher)
+    /// <param name="log">The tray's log, handed to everything that logs.</param>
+    public TrayHost(Dispatcher dispatcher, ITrayLog log)
     {
         _dispatcher = dispatcher;
+        _log = log;
+        _client = new PipeClient(PipeProtocol.PipeName, PipeClient.DefaultRequestTimeout, log);
+        _shellActions = new ShellActions(ShellActions.DefaultElevateHelperPath, log);
         _icons = Enum.GetValues<TrayState>().ToDictionary(s => s, s => TrayIconRenderer.ToIcon(TrayIconRenderer.Render(s)));
-        _tray = new TrayViewModel(_client, this);
+        _tray = new TrayViewModel(_client, this, log);
         _taskbarIcon = CreateTaskbarIcon();
     }
 
@@ -59,7 +64,7 @@ public sealed class TrayHost : ITrayShell, IDisposable
     {
         if (_alertsWindow?.DataContext is not AlertsViewModel viewModel)
         {
-            viewModel = new AlertsViewModel(_client, _dialogs, _shellActions);
+            viewModel = new AlertsViewModel(_client, _dialogs, _shellActions, _log);
             _alertsWindow = new AlertsWindow { DataContext = viewModel };
             _alertsWindow.Closed += (_, _) => _alertsWindow = null;
             _alertsWindow.Show();
@@ -129,7 +134,7 @@ public sealed class TrayHost : ITrayShell, IDisposable
         _taskbarIcon.Dispose();
         if (!_client.DisposeAsync().AsTask().Wait(ShutdownWait))
         {
-            TrayLog.Warning("The pipe client did not stop within 2 s of exit.", null);
+            _log.Warning("The pipe client did not stop within 2 s of exit.", null);
         }
 
         foreach (DrawingIcon icon in _icons.Values)

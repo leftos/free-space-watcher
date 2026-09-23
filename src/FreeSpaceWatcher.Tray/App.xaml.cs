@@ -12,6 +12,7 @@ public sealed partial class App : Application, IDisposable
 {
     private const string UninstallNotificationsSwitch = "--uninstall-notifications";
     private const string InstanceMutexName = @"Local\FreeSpaceWatcher.Tray";
+    private readonly TrayLog _log = new(TrayLog.DefaultPath);
     private Mutex? _instanceMutex;
     private TrayHost? _host;
 
@@ -44,13 +45,13 @@ public sealed partial class App : Application, IDisposable
         }
 
         _instanceMutex = mutex;
-        _host = new TrayHost(Dispatcher);
+        _host = new TrayHost(Dispatcher, _log);
         _host.Start();
     }
 
     // The uninstall script waits for this process to exit; a crash dialog would keep it, and the files it runs from, alive.
 #pragma warning disable CA1031
-    private static int UninstallNotifications()
+    private int UninstallNotifications()
     {
         try
         {
@@ -59,7 +60,7 @@ public sealed partial class App : Application, IDisposable
         }
         catch (Exception ex)
         {
-            TrayLog.Warning("Removing the toast notification registration failed.", ex);
+            _log.Warning("Removing the toast notification registration failed.", ex);
             return 1;
         }
     }
