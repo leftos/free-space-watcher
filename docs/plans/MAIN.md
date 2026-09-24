@@ -28,6 +28,9 @@ Design: [free-space-watcher.md](./free-space-watcher.md) (the approved design; r
 
 ## Backlog
 
+- [ ] `install.ps1` under `sudo` in Force New Window mode (this machine's setting) runs in a window that closes when it ends, so its output and any error are lost; write a log file the caller can read (seen 2026-09-23).
+- [ ] `install.ps1`'s last step (`explorer.exe "<tray exe>"`) did not start the tray when run through `sudo` on 2026-09-23 (no tray process, nothing in tray.log); the install itself had succeeded.
+
 - [x] The summary toast shown on connect has no Tag/Group, so summary toasts from repeated reconnects may stack (not verified).
 - [x] Tray tests that hit failure paths write to the developer's real `%LOCALAPPDATA%\FreeSpaceWatcher\tray.log` because `TrayLog`'s path is fixed.
 - [x] `GetProcessStatesRequest` has no cap on pids; each `QueryRunState` snapshots all processes (not measured).
