@@ -56,12 +56,12 @@ public sealed class TrayInstanceChannel : IAsyncDisposable
         }
     }
 
-    /// <summary>Stops listening.</summary>
+    /// <summary>Stops listening; safe to wait on synchronously from the UI thread, since it never resumes on the caller's context.</summary>
     /// <returns>A task that completes when the listener has stopped.</returns>
     public async ValueTask DisposeAsync()
     {
-        await _stop.CancelAsync();
-        await _loop;
+        await _stop.CancelAsync().ConfigureAwait(false);
+        await _loop.ConfigureAwait(false);
         _stop.Dispose();
     }
 
