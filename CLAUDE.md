@@ -22,6 +22,7 @@ prek run                                                 # pre-commit: format st
 - `WriteCollectorIntegrationTests` (real ETW kernel session) runs only from an elevated shell and calls `Assert.Skip` otherwise.
 - `scripts/install.ps1` / `scripts/uninstall.ps1 [-Purge]` (elevated) publish to `C:\Program Files\FreeSpaceWatcher`, register the service and the tray's Run entry. Re-running install upgrades in place.
 - `scripts/fill-test.ps1 -MBPerSecond 200 -Seconds 60` writes a temp file at a steady rate to set off alerts end to end.
+- `scripts/ui-smoke.ps1` builds the Debug tray and drives it without the mouse. It posts icon clicks to the H.NotifyIcon message window, invokes menu items and closes windows through UI Automation. It opens each window from the menu and from a left- or double-click, then exits. It fails when a window or its key control doesn't appear, or when the tray exits, stops responding or logs a WARN to `tray.log`. Run it after every tray change; unit tests don't catch layout-time exceptions. It needs the service running and steals focus for about 20 s.
 - `scripts/capture-ui.ps1 -Window status|alerts|settings|icons -Theme light|dark|system` starts the Debug tray with `--theme`/`--open`/`--select-latest` and saves PNGs of its windows, for reviewing UI changes. The tray is single-instance per session, so the script stops the running tray and restarts the installed one afterwards.
 - The service accepts `--data-dir <path>` to use a folder other than `%ProgramData%\FreeSpaceWatcher` (tests and smoke runs use it).
 
