@@ -30,8 +30,8 @@ Design: [free-space-watcher.md](./free-space-watcher.md) (the approved design; r
 
 - [x] Short, finite write bursts (a git worktree checkout plus its first build, as Claude Code agents create) raise drop-rate / time-to-full alerts. Tell a burst from a sustained drop; a burst-only alert is recorded in history, auto-acknowledged, with no toast (user request 2026-09-26).
 
-- [ ] `install.ps1` under `sudo` in Force New Window mode (this machine's setting) runs in a window that closes when it ends, so its output and any error are lost; write a log file the caller can read (seen 2026-09-23).
-- [ ] `install.ps1`'s last step (`explorer.exe "<tray exe>"`) did not start the tray when run through `sudo` on 2026-09-23 (no tray process, nothing in tray.log); the install itself had succeeded.
+- [ ] `install.ps1` under `sudo` in Force New Window mode (this machine's setting) runs in a window that closes when it ends, so its output and any error are lost; write a log file the caller can read (seen 2026-09-23). Not seen 2026-09-26: `! sudo pwsh -NoProfile -File scripts/install.ps1` from Claude Code printed the full output inline.
+- [ ] `install.ps1`'s last step (`explorer.exe "<tray exe>"`) did not start the tray when run through `sudo` on 2026-09-23 (no tray process, nothing in tray.log); the install itself had succeeded. Not seen 2026-09-26: the same `sudo` install started the tray (process up one second after the service).
 
 - [x] The summary toast shown on connect has no Tag/Group, so summary toasts from repeated reconnects may stack (not verified).
 - [x] Tray tests that hit failure paths write to the developer's real `%LOCALAPPDATA%\FreeSpaceWatcher\tray.log` because `TrayLog`'s path is fixed.
