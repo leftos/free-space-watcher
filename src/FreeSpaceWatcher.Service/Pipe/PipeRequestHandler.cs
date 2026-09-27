@@ -65,6 +65,7 @@ public sealed partial class PipeRequestHandler(
             Reason = alert.Reason,
             Acknowledged = alert.Acknowledged,
             ResolvedAt = alert.ResolvedAt,
+            IsBurst = alert.IsBurst,
         };
 
     private int Acknowledge(IReadOnlyList<string>? ids)

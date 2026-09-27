@@ -25,8 +25,14 @@ public sealed partial class AlertListItem(AlertSummary summary, DateTimeOffset n
     /// <summary>Gets whether the alert is still unacknowledged; the list marks those with a critical dot and a semibold reason.</summary>
     public bool IsUnacknowledged => !Summary.Acknowledged;
 
-    /// <summary>Gets whether the alert resolved itself; the list marks those with a Resolved pill and secondary text.</summary>
+    /// <summary>Gets whether the alert resolved itself or was a burst; the list shows those in secondary text.</summary>
     public bool IsResolved => Summary.ResolvedAt is not null;
+
+    /// <summary>Gets whether the alert was a burst; the list marks those with a Burst pill instead of the Resolved pill.</summary>
+    public bool IsBurst => Summary.IsBurst;
+
+    /// <summary>Gets whether the row shows the Resolved pill: the alert resolved itself and was not a burst.</summary>
+    public bool ShowResolvedPill => IsResolved && !IsBurst;
 
     /// <summary>Gets the drive chip's text, e.g. "C:".</summary>
     public string DriveLabel => Summary.Drive + ":";
@@ -77,7 +83,10 @@ public sealed record AlertDetails
     /// <summary>Gets whether the alert is acknowledged.</summary>
     public required bool Acknowledged { get; init; }
 
-    /// <summary>Gets the resolved strip's text, e.g. "Resolved 2 min ago: pwsh deleted 14.0 GB it had written", or null when the alert has not resolved.</summary>
+    /// <summary>
+    /// Gets the resolved strip's text, e.g. "Resolved 2 min ago: pwsh deleted 14.0 GB it had written", or, for a burst, its reason alone
+    /// (or "Burst" when it has none); null when the alert has not resolved.
+    /// </summary>
     public required string? ResolvedText { get; init; }
 
     /// <summary>Gets when the alert resolved, in full, for the resolved strip's tooltip, or null when it has not.</summary>
@@ -128,6 +137,11 @@ public sealed record AlertDetails
         if (alert.ResolvedAt is not DateTimeOffset at)
         {
             return null;
+        }
+
+        if (alert.IsBurst)
+        {
+            return string.IsNullOrWhiteSpace(alert.ResolvedReason) ? "Burst" : alert.ResolvedReason;
         }
 
         string when = $"Resolved {AlertFormat.RelativeTime(at, now, zone, CultureInfo.CurrentCulture)}";

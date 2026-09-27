@@ -72,6 +72,9 @@ public sealed record AlertSummary
 
     /// <summary>Gets when the alert resolved itself because its writers removed what they had written, or null when it has not.</summary>
     public DateTimeOffset? ResolvedAt { get; init; }
+
+    /// <summary>Gets a value indicating whether the alert was a burst, recorded acknowledged and resolved without a toast.</summary>
+    public bool IsBurst { get; init; }
 }
 
 /// <summary>One alert in full.</summary>

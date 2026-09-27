@@ -135,6 +135,18 @@ public sealed class TrayViewModelTests
         Assert.Equal(["C"], _shell.RemovedDrives);
     }
 
+    [Fact]
+    public async Task OnAlert_AlreadyAcknowledged_ShowsNoToast()
+    {
+        TrayViewModel tray = await LoadAsync();
+        _channel.Alerts = [Summary("c1", "C", true)];
+
+        await tray.OnAlertAsync(FullAlert("c1", "C") with { Acknowledged = true, IsBurst = true });
+
+        Assert.Empty(_shell.AlertToastDrives);
+        Assert.Equal(0, tray.UnacknowledgedCount);
+    }
+
     private async Task<TrayViewModel> LoadAsync(params AlertSummary[] alerts)
     {
         _channel.Alerts = alerts;

@@ -97,6 +97,7 @@ public sealed class PipeProtocolTests
             Trigger = alert.Trigger,
             Reason = alert.Reason,
             Acknowledged = true,
+            IsBurst = true,
         };
         return
         [
@@ -133,6 +134,7 @@ public sealed class PipeProtocolTests
                 alert with
                 {
                     Acknowledged = true,
+                    IsBurst = true,
                     ResolvedAt = T0.AddMinutes(3),
                     ResolvedReason = "pwsh deleted 14.0 GB it had written",
                 }

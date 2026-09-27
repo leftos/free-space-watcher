@@ -18,8 +18,9 @@ namespace FreeSpaceWatcher.Service.Alerts;
 /// growth itself (<see cref="TrackedGrowth"/>). A drop-rate or time-to-full alert with tracked growth is held for the drive's
 /// grace delay instead of raised; each <see cref="Tick"/> re-measures the files, and a held alert whose writers removed all but
 /// 10 % of that growth is discarded, with its firings retracted from the drive's evaluator so it starts no cooldown. An
-/// escalation on a drive with a held alert replaces it and is raised at once. After a raise, an alert with tracked growth is
-/// watched for the drive's resolve window, and resolves itself (acknowledged, with a time and a reason) when its writers remove
+/// escalation on a drive with a held alert replaces it and is raised at once. A held alert whose drive has stopped losing space
+/// when its grace delay ends is a burst: it is stored acknowledged and resolved, without a toast, and is not watched. After a
+/// raise, an alert with tracked growth is watched for the drive's resolve window, and resolves itself (acknowledged, with a time and a reason) when its writers remove
 /// the growth. Floor and process write volume alerts, and alerts with no tracked growth, are never held.
 /// </para>
 /// <para>
@@ -101,7 +102,8 @@ public sealed partial class AlertEngine(
 
     /// <summary>Re-measures the files of held and watched alerts: discards, raises or resolves them.</summary>
     /// <remarks>
-    /// A held alert whose remaining growth is 10 % or less is discarded; one whose grace delay has elapsed is raised. A watched
+    /// A held alert whose remaining growth is 10 % or less is discarded; one whose grace delay has elapsed is raised, or recorded
+    /// as a burst when the drive lost less than its noise floor over the last <see cref="TriggerEvaluator.BurstSettle"/>. A watched
     /// alert whose remaining growth is 10 % or less is resolved; one whose resolve window has ended is no longer watched.
     /// </remarks>
     /// <param name="now">The time of the sampler tick.</param>
@@ -200,8 +202,32 @@ public sealed partial class AlertEngine(
         else if (now - held.Since >= held.Grace)
         {
             _held.Remove(held.Alert.Drive);
-            Publish(held.Alert, held.Growth, now);
+            if (DropHasStopped(held))
+            {
+                RecordBurst(held, now);
+            }
+            else
+            {
+                Publish(held.Alert, held.Growth, now);
+            }
         }
+    }
+
+    private bool DropHasStopped(HeldAlert held) =>
+        held.Evaluator.RecentLossRate(TriggerEvaluator.BurstSettle) is double rate
+        && rate * 60 < config.Current.For(held.Alert.Drive).NoiseFloorBytesPerMinute;
+
+    private void RecordBurst(HeldAlert held, DateTimeOffset now)
+    {
+        string reason = Invariant($"Short burst: free space stopped falling within {(int)held.Grace.TotalSeconds} s");
+        Alert saved = history.Save(held.Alert with { IsBurst = true, Acknowledged = true, ResolvedAt = now, ResolvedReason = reason });
+        LogBurst(logger, saved.Id, reason);
+        foreach (TriggerKind kind in held.Kinds)
+        {
+            held.Evaluator.MarkBurst(kind);
+        }
+
+        hub.PublishAlertsChanged();
     }
 
     private void CheckWatched(WatchedAlert watched, DateTimeOffset now)
@@ -300,6 +326,9 @@ public sealed partial class AlertEngine(
 
     [LoggerMessage(EventId = 1307, Level = LogLevel.Information, Message = "Alert {AlertId} resolved: {Reason}")]
     private static partial void LogResolved(ILogger logger, string alertId, string reason);
+
+    [LoggerMessage(EventId = 1308, Level = LogLevel.Information, Message = "Alert {AlertId} recorded as a burst: {Reason}")]
+    private static partial void LogBurst(ILogger logger, string alertId, string reason);
 
     /// <summary>An alert held for its grace delay.</summary>
     private sealed record HeldAlert(

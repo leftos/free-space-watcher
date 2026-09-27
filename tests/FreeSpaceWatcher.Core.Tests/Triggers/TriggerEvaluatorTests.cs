@@ -315,6 +315,68 @@ public sealed class TriggerEvaluatorTests
         Assert.Empty(Run(evaluator, 51, 60, ramp));
     }
 
+    [Fact]
+    public void RecentLossRate_FlatTailAfterRamp_BelowNoiseFloor()
+    {
+        TriggerEvaluator evaluator = Create(Only(TriggerKind.DropRate));
+        Func<int, long> ramp = Losing(900 * GiB, 2 * GiB);
+        Assert.Single(Run(evaluator, 0, 49, ramp));
+
+        Assert.Empty(Run(evaluator, 49, 60, _ => ramp(48)));
+        double? rate = evaluator.RecentLossRate(TriggerEvaluator.BurstSettle);
+
+        Assert.NotNull(rate);
+        Assert.True(Math.Abs(rate.Value) * 60 < ResolvedThresholds.Default.NoiseFloorBytesPerMinute);
+        Assert.True(evaluator.CurrentDropRate * 60 >= ResolvedThresholds.Default.DropRateBytesPerMinute);
+    }
+
+    [Fact]
+    public void RecentLossRate_Ramp_ReportsRampRate()
+    {
+        TriggerEvaluator evaluator = Create(Only(TriggerKind.DropRate));
+
+        Assert.Empty(Run(evaluator, 0, 30, Losing(900 * GiB, 2 * GiB)));
+        double? rate = evaluator.RecentLossRate(TriggerEvaluator.BurstSettle);
+
+        Assert.NotNull(rate);
+        Assert.Equal(2.0 * GiB / 60, rate.Value, 1.0);
+    }
+
+    [Fact]
+    public void RecentLossRate_TooFewSamples_Null()
+    {
+        TriggerEvaluator evaluator = Create(Only(TriggerKind.DropRate));
+        Assert.Null(evaluator.RecentLossRate(TriggerEvaluator.BurstSettle));
+
+        Assert.Empty(evaluator.Evaluate(Sample(0, 500 * GiB), NoWrites));
+        Assert.Null(evaluator.RecentLossRate(TriggerEvaluator.BurstSettle));
+
+        Assert.Empty(evaluator.Evaluate(Sample(20, 499 * GiB), NoWrites));
+        Assert.Null(evaluator.RecentLossRate(TriggerEvaluator.BurstSettle));
+        Assert.NotNull(evaluator.RecentLossRate(TimeSpan.FromSeconds(20)));
+    }
+
+    [Fact]
+    public void MarkBurst_RetractsCooldownAndRelearnsRate()
+    {
+        TriggerEvaluator evaluator = Create(Only(TriggerKind.DropRate));
+        Func<int, long> ramp = Losing(900 * GiB, 2 * GiB);
+        Assert.Equal(48, Assert.Single(Run(evaluator, 0, 49, ramp)).Index);
+        long stopped = ramp(48);
+        Assert.Empty(Run(evaluator, 49, 59, _ => stopped));
+
+        evaluator.MarkBurst(TriggerKind.DropRate);
+        Assert.Null(evaluator.CurrentDropRate);
+        Assert.Null(evaluator.CurrentTimeToFull);
+        Assert.Empty(Run(evaluator, 59, 180, _ => stopped));
+        Firings again = Run(evaluator, 180, 241, i => stopped - 2 * GiB * (i - 179) / 60);
+
+        (int Index, TriggerFiring Firing) refired = Assert.Single(again);
+        Assert.InRange(refired.Index, 181, 240);
+        Assert.Equal(TriggerKind.DropRate, refired.Firing.Kind);
+        Assert.False(refired.Firing.IsEscalation);
+    }
+
     private static TriggerEvaluator Create(ResolvedThresholds limits) => new("C", () => limits, RateWindow, Cooldown);
 
     private static ResolvedThresholds Only(TriggerKind kind) =>

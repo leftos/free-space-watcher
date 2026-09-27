@@ -46,6 +46,12 @@ public sealed record Alert
     /// <summary>Gets whether the user acknowledged the alert.</summary>
     public bool Acknowledged { get; init; }
 
+    /// <summary>
+    /// Gets a value indicating whether the alert was a burst: its drop had stopped when its grace delay ended, so it was recorded
+    /// acknowledged and resolved without a toast.
+    /// </summary>
+    public bool IsBurst { get; init; }
+
     /// <summary>Gets when the alert resolved itself because its writers removed what they had written, or null when it has not.</summary>
     public DateTimeOffset? ResolvedAt { get; init; }
 

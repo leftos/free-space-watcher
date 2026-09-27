@@ -1,3 +1,4 @@
+using System.Text.Json.Nodes;
 using FreeSpaceWatcher.Core.Alerts;
 using FreeSpaceWatcher.Core.Triggers;
 using FreeSpaceWatcher.Core.Writes;
@@ -92,6 +93,45 @@ public sealed class HistoryStoreTests : IDisposable
             strict: true
         );
         Assert.Single(Directory.GetFiles(AlertsPath));
+        Assert.Empty(_errors);
+    }
+
+    [Fact]
+    public void Save_BurstAlert_RoundTripsIsBurst()
+    {
+        HistoryStore store = CreateStore();
+        Alert burst = MakeAlert(T0, TriggerKind.DropRate) with
+        {
+            IsBurst = true,
+            Acknowledged = true,
+            ResolvedAt = T0.AddSeconds(20),
+            ResolvedReason = "Short burst: free space stopped falling within 20 s",
+        };
+
+        Alert saved = store.Save(burst);
+        Alert? loaded = store.Get(saved.Id);
+
+        Assert.NotNull(loaded);
+        Assert.True(loaded.IsBurst);
+        Assert.Equivalent(saved, loaded, strict: true);
+        Assert.Empty(_errors);
+    }
+
+    [Fact]
+    public void Get_FileWithoutIsBurst_LoadsAsNotBurst()
+    {
+        HistoryStore store = CreateStore();
+        Alert saved = store.Save(MakeAlert(T0, TriggerKind.DropRate) with { IsBurst = true });
+        string file = Path.Combine(AlertsPath, saved.Id + ".json");
+        JsonObject json = JsonNode.Parse(File.ReadAllText(file))!.AsObject();
+        Assert.True(json.Remove("isBurst"));
+        File.WriteAllText(file, json.ToJsonString());
+
+        Alert? loaded = store.Get(saved.Id);
+
+        Assert.NotNull(loaded);
+        Assert.False(loaded.IsBurst);
+        Assert.Equivalent(saved with { IsBurst = false }, loaded, strict: true);
         Assert.Empty(_errors);
     }
 

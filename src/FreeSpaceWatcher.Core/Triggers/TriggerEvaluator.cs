@@ -13,7 +13,8 @@ namespace FreeSpaceWatcher.Core.Triggers;
 /// escalation of either needs at least <see cref="MinEscalationGap"/> since that trigger's own last firing: while a ramp fills the
 /// rate window the fitted slope keeps climbing, and without the gap one ramp would raise an alert every few seconds. The
 /// process-write trigger keeps its own cooldown and escalates at once. The floor fires once and re-arms when free space climbs
-/// back above the floor by 10 %.
+/// back above the floor by 10 %. A rate firing the alert engine judges a burst (free space stopped falling within its grace delay)
+/// is undone through <see cref="MarkBurst"/>, which also forgets the burst's samples so the rate is re-learned from later ones.
 /// </remarks>
 /// <param name="driveLetter">The drive letter, used in the reason sentences.</param>
 /// <param name="thresholds">Returns the drive's current thresholds; called on every sample so configuration changes apply at once.</param>
@@ -23,6 +24,9 @@ public sealed class TriggerEvaluator(string driveLetter, Func<ResolvedThresholds
 {
     /// <summary>The least time between a drop-rate or time-to-full firing and an escalation of the same trigger.</summary>
     public static readonly TimeSpan MinEscalationGap = TimeSpan.FromSeconds(60);
+
+    /// <summary>The span of newest samples over which a held alert's drop must have stopped for the alert to count as a burst.</summary>
+    public static readonly TimeSpan BurstSettle = TimeSpan.FromSeconds(10);
 
     private const double FloorReArmFactor = 1.10;
     private readonly string _label = WatcherConfig.NormalizeLetter(driveLetter) + ":";
@@ -107,6 +111,38 @@ public sealed class TriggerEvaluator(string driveLetter, Func<ResolvedThresholds
         }
     }
 
+    /// <summary>Computes the least-squares loss rate over the newest samples only.</summary>
+    /// <param name="span">How far back from the newest sample to look; samples at exactly that age are included.</param>
+    /// <returns>The loss rate in bytes per second (positive = losing space), or null with fewer than two samples in the span.</returns>
+    public double? RecentLossRate(TimeSpan span)
+    {
+        if (_samples.Count == 0)
+        {
+            return null;
+        }
+
+        DateTimeOffset oldest = _samples[^1].Time - span;
+        return LeastSquaresLossRate(_samples.FindIndex(s => s.Time >= oldest));
+    }
+
+    /// <summary>Undoes a rate trigger's firing that turned out to be a short burst, and forgets the burst.</summary>
+    /// <remarks>
+    /// The firing is retracted (see <see cref="Retract"/>), so it starts no cooldown, and every sample but the newest is dropped,
+    /// so the burst leaves the rate window and the drop rate is re-learned from the samples that follow.
+    /// </remarks>
+    /// <param name="kind">The trigger whose most recent firing was a burst.</param>
+    public void MarkBurst(TriggerKind kind)
+    {
+        Retract(kind);
+        if (_samples.Count > 1)
+        {
+            _samples.RemoveRange(0, _samples.Count - 1);
+        }
+
+        CurrentDropRate = null;
+        CurrentTimeToFull = null;
+    }
+
     /// <summary>Forgets the samples because the drive went away; the rate must be re-learned from new samples.</summary>
     public void MarkUnavailable()
     {
@@ -124,29 +160,39 @@ public sealed class TriggerEvaluator(string driveLetter, Func<ResolvedThresholds
 
     private void UpdateRates(long freeBytes, ResolvedThresholds limits)
     {
-        CurrentDropRate = WindowIsCovered() ? LeastSquaresLossRate() : null;
+        CurrentDropRate = WindowIsCovered() ? LeastSquaresLossRate(0) : null;
         CurrentTimeToFull =
             CurrentDropRate is double rate && rate > 0 && rate * 60 >= limits.NoiseFloorBytesPerMinute ? TimeToFull(freeBytes, rate) : null;
     }
 
     private bool WindowIsCovered() => _samples.Count >= 2 && (_samples[^1].Time - _samples[0].Time).Ticks >= rateWindow.Ticks * 4 / 5;
 
-    private double? LeastSquaresLossRate()
+    /// <summary>Fits free space against time over the samples from <paramref name="first"/> to the newest.</summary>
+    /// <param name="first">The index of the oldest sample to include, or -1 when there is none.</param>
+    /// <returns>The loss rate in bytes per second, or null with fewer than two samples or no spread in time.</returns>
+    private double? LeastSquaresLossRate(int first)
     {
-        DateTimeOffset origin = _samples[0].Time;
+        int count = first < 0 ? 0 : _samples.Count - first;
+        if (count < 2)
+        {
+            return null;
+        }
+
+        List<DriveSample> fitted = _samples.GetRange(first, count);
+        DateTimeOffset origin = fitted[0].Time;
         double meanX = 0;
         double meanY = 0;
-        foreach (DriveSample sample in _samples)
+        foreach (DriveSample sample in fitted)
         {
             meanX += (sample.Time - origin).TotalSeconds;
             meanY += sample.FreeBytes;
         }
 
-        meanX /= _samples.Count;
-        meanY /= _samples.Count;
+        meanX /= count;
+        meanY /= count;
         double covariance = 0;
         double variance = 0;
-        foreach (DriveSample sample in _samples)
+        foreach (DriveSample sample in fitted)
         {
             double dx = (sample.Time - origin).TotalSeconds - meanX;
             covariance += dx * (sample.FreeBytes - meanY);

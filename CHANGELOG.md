@@ -15,5 +15,6 @@
 - Open a writer's folder or show a file in Explorer from an alert or its toast.
 - Acknowledge all, Clear and Clear all in the Alerts window and its right-click menu, plus Acknowledge all in the tray menu.
 - An app that deletes what it wrote no longer leaves an alert: rate alerts wait 20 s, and alerts resolve themselves within 5 min.
+- A short write burst, such as a git worktree checkout, that stops within the grace delay is kept in history as a Burst, without a toast.
 - Alerts are kept for 30 days and written to the Windows event log.
 - Install, uninstall and fill-test scripts.

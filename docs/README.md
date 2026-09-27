@@ -23,6 +23,7 @@ Free Space Watcher is a Windows service plus tray app that warns when a drive's 
 - **Paging I/O** — writes the cache manager or mapped-page writer issues to flush data an app already wrote (`IRP_PAGING_IO`); dropped so cached writes are not counted twice.
 - **Net growth** — how much a process grew its files in the write window, minus what it deleted or truncated; the write-volume trigger fires on it, so write-then-delete churn does not alert.
 - **Grace delay** — how long (default 20 s) a drop-rate or time-to-full alert is held before it is raised; it is discarded if its writers remove what they wrote in that time.
+- **Burst** — a drop-rate or time-to-full alert whose drop had already stopped (loss under the noise floor over the last 10 s) when its grace delay ended; it is recorded in history acknowledged and resolved, with no toast.
 - **Auto-resolve** — marking a raised alert resolved and acknowledged when its writers remove what they wrote within the resolve window (default 5 min).
 - **Remaining growth** — for a tracked file, how much of the growth an alert saw is still on disk (current size minus the size before the growth; 0 once deleted). An alert is discarded or resolved when 10 % or less remains.
 - **Elevate helper** — `FreeSpaceWatcher.Elevate.exe`, run through a UAC prompt only to suspend, resume or kill a process the user's own token cannot touch.

@@ -52,6 +52,49 @@ public sealed class AlertNodesTests
     }
 
     [Fact]
+    public void AlertListItem_Burst_ShowsBurstNotResolvedPill()
+    {
+        AlertListItem item = new(ResolvedSummary() with { IsBurst = true }, T0, TimeZoneInfo.Utc);
+
+        Assert.True(item.IsBurst);
+        Assert.False(item.ShowResolvedPill);
+        Assert.True(item.IsResolved);
+    }
+
+    [Fact]
+    public void AlertListItem_ResolvedNotBurst_ShowsResolvedPill()
+    {
+        AlertListItem item = new(ResolvedSummary(), T0, TimeZoneInfo.Utc);
+
+        Assert.True(item.ShowResolvedPill);
+        Assert.False(item.IsBurst);
+    }
+
+    [Fact]
+    public void Details_Burst_ResolvedTextIsTheReasonAlone()
+    {
+        Alert alert = Alert([]) with
+        {
+            IsBurst = true,
+            ResolvedAt = T0.AddSeconds(20),
+            ResolvedReason = "Short burst: free space stopped falling within 20 s",
+        };
+
+        Assert.Equal(
+            "Short burst: free space stopped falling within 20 s",
+            AlertDetails.From(alert, T0.AddMinutes(2), TimeZoneInfo.Utc).ResolvedText
+        );
+    }
+
+    [Fact]
+    public void Details_BurstWithoutReason_ResolvedTextIsBurst()
+    {
+        Alert alert = Alert([]) with { IsBurst = true, ResolvedAt = T0.AddSeconds(20) };
+
+        Assert.Equal("Burst", AlertDetails.From(alert, T0.AddMinutes(2), TimeZoneInfo.Utc).ResolvedText);
+    }
+
+    [Fact]
     public void Details_ResolvedAlert_StripSaysHowLongAgoAndWhy_WithTheAbsoluteTimeForItsTooltip()
     {
         DateTimeOffset resolvedAt = T0.AddMinutes(3);
@@ -227,6 +270,18 @@ public sealed class AlertNodesTests
             FilesDeleted = 0,
             Folders = [],
             Files = [],
+        };
+
+    private static AlertSummary ResolvedSummary() =>
+        new()
+        {
+            Id = "a",
+            Time = T0,
+            Drive = "C",
+            Trigger = TriggerKind.DropRate,
+            Reason = "C: losing 2.1 GB/min",
+            Acknowledged = true,
+            ResolvedAt = T0.AddMinutes(1),
         };
 
     private static Alert Alert(IReadOnlyList<ProcessWriteReport> writers) =>

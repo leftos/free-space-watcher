@@ -126,6 +126,65 @@ public sealed class AlertEngineTests : IDisposable
     }
 
     [Fact]
+    public void Grace_DropStopsBeforeGraceEnds_SavedAsBurstAcknowledgedWithoutAlertPush()
+    {
+        (_, DriveSample held, _) = BurstAtGraceEnd();
+
+        Alert stored = Assert.Single(_history.List());
+        Assert.True(stored.IsBurst);
+        Assert.True(stored.Acknowledged);
+        Assert.Equal(TriggerKind.DropRate, stored.Trigger);
+        Assert.Equal(held.Time, stored.Time);
+        Assert.Equal(held.Time.AddSeconds(20), stored.ResolvedAt);
+        Assert.Equal("Short burst: free space stopped falling within 20 s", stored.ResolvedReason);
+        Assert.IsType<AlertsChangedPush>(Assert.Single(_pushes));
+    }
+
+    [Fact]
+    public void Grace_DropContinuesAtGraceEnd_RaisedAsToday()
+    {
+        Configure(graceSeconds: 20, resolveMinutes: 5);
+        GrowFile("ramp.bin", 1 << 20);
+        TriggerEvaluator evaluator = DropRateOnly();
+        (int second, DriveSample sample, IReadOnlyList<TriggerFiring> firings) = RampUntilFiring(evaluator, 0);
+        Assert.Null(_engine.Raise(Letter, sample, [sample], firings, evaluator));
+
+        Assert.Empty(Feed(evaluator, second + 1, second + 21, RampFree));
+        _engine.Tick(sample.Time.AddSeconds(20));
+
+        Alert stored = Assert.Single(_history.List());
+        Assert.False(stored.IsBurst);
+        Assert.False(stored.Acknowledged);
+        Assert.Null(stored.ResolvedAt);
+        Assert.Equal(stored.Id, Assert.IsType<AlertPush>(Assert.Single(_pushes)).Alert.Id);
+    }
+
+    [Fact]
+    public void Grace_Burst_NotWatchedForResolve()
+    {
+        (_, DriveSample held, string file) = BurstAtGraceEnd();
+
+        File.Delete(file);
+        _engine.Tick(held.Time.AddSeconds(30));
+        _engine.Tick(held.Time.AddSeconds(60));
+
+        Assert.Equal("Short burst: free space stopped falling within 20 s", Assert.Single(_history.List()).ResolvedReason);
+        Assert.IsType<AlertsChangedPush>(Assert.Single(_pushes));
+    }
+
+    [Fact]
+    public void Grace_AfterBurst_FlatSamplesDoNotRefire()
+    {
+        (TriggerEvaluator evaluator, DriveSample held, _) = BurstAtGraceEnd();
+        int second = (int)(held.Time - T0).TotalSeconds;
+
+        Assert.Empty(Feed(evaluator, second + 21, second + 200, _ => held.FreeBytes));
+
+        Assert.Single(_history.List());
+        Assert.Single(_pushes);
+    }
+
+    [Fact]
     public void Grace_EscalationWhileHeld_RaisedImmediately()
     {
         Configure(graceSeconds: 20, resolveMinutes: 5);
@@ -325,11 +384,37 @@ public sealed class AlertEngineTests : IDisposable
         return file;
     }
 
+    private (TriggerEvaluator Evaluator, DriveSample Held, string File) BurstAtGraceEnd()
+    {
+        Configure(graceSeconds: 20, resolveMinutes: 5);
+        string file = GrowFile("burst.bin", 1 << 20);
+        TriggerEvaluator evaluator = DropRateOnly();
+        (int second, DriveSample sample, IReadOnlyList<TriggerFiring> firings) = RampUntilFiring(evaluator, 0);
+        Assert.Null(_engine.Raise(Letter, sample, [sample], firings, evaluator));
+
+        Assert.Empty(Feed(evaluator, second + 1, second + 21, _ => sample.FreeBytes));
+        _engine.Tick(sample.Time.AddSeconds(20));
+        return (evaluator, sample, file);
+    }
+
+    private static List<TriggerFiring> Feed(TriggerEvaluator evaluator, int from, int to, Func<int, long> freeAt)
+    {
+        List<TriggerFiring> firings = [];
+        for (int second = from; second < to; second++)
+        {
+            firings.AddRange(evaluator.Evaluate(new DriveSample(T0.AddSeconds(second), freeAt(second), 1024L << 30), []));
+        }
+
+        return firings;
+    }
+
+    private static long RampFree(int second) => (900L << 30) - (second * (2L << 30) / 60);
+
     private static (int Second, DriveSample Sample, IReadOnlyList<TriggerFiring> Firings) RampUntilFiring(TriggerEvaluator evaluator, int from)
     {
         for (int second = from; second < from + 120; second++)
         {
-            DriveSample sample = new(T0.AddSeconds(second), (900L << 30) - (second * (2L << 30) / 60), 1024L << 30);
+            DriveSample sample = new(T0.AddSeconds(second), RampFree(second), 1024L << 30);
             IReadOnlyList<TriggerFiring> firings = evaluator.Evaluate(sample, []);
             if (firings.Count > 0)
             {

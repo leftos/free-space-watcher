@@ -145,14 +145,18 @@ public sealed partial class TrayViewModel(IServiceChannel channel, ITrayShell sh
         OnPropertyChanged(nameof(ToolTipText));
     }
 
-    /// <summary>Shows a toast for a new alert and recounts the unacknowledged alerts.</summary>
+    /// <summary>Shows a toast for a new unacknowledged alert (a burst arrives acknowledged) and recounts the unacknowledged alerts.</summary>
     /// <param name="alert">The alert.</param>
     /// <returns>A task that completes when the count is updated.</returns>
     public async Task OnAlertAsync(Alert alert)
     {
         ArgumentNullException.ThrowIfNull(alert);
-        _resolvedToastDrives.Remove(alert.Drive);
-        shell.ShowAlertToast(alert);
+        if (!alert.Acknowledged)
+        {
+            _resolvedToastDrives.Remove(alert.Drive);
+            shell.ShowAlertToast(alert);
+        }
+
         await RefreshUnacknowledgedAsync();
     }
 
