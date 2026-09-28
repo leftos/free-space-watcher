@@ -1,6 +1,6 @@
 # UI design pass
 
-User request 2026-09-23: make the tray UI look finished rather than scaffolded. Decisions from the interview: the built-in WPF Fluent theme (`ThemeMode`, no new dependency); scope covers the Alerts window, Settings window, a new Status window, and the tray icon and toasts; the tray gains `--open alerts|settings|status` and `--theme light|dark|system` so windows can be captured to PNG for review (and opened by scripts and agents).
+User request: make the tray UI look finished rather than scaffolded. Decisions from the interview: the built-in WPF Fluent theme (`ThemeMode`, no new dependency); scope covers the Alerts window, Settings window, a new Status window, and the tray icon and toasts; the tray gains `--open alerts|settings|status` and `--theme light|dark|system` so windows can be captured to PNG for review (and opened by scripts and agents).
 
 ## Design language
 
