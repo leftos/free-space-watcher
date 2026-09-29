@@ -25,4 +25,6 @@ name = "dotnet build (warnings as errors)"
 entry = "dotnet build FreeSpaceWatcher.slnx -p:TreatWarningsAsErrors=true"
 language = "system"
 pass_filenames = false
+# A commit of Markdown alone has nothing to build.
+exclude = '\.md$'
 stages = ["pre-commit"]
