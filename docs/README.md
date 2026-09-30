@@ -5,6 +5,8 @@ Free Space Watcher is a Windows service plus tray app that warns when a drive's 
 - Plan index: [plans/MAIN.md](./plans/MAIN.md)
 - Design: [plans/free-space-watcher.md](./plans/free-space-watcher.md)
 
+- [`ARCHITECTURE.md`](ARCHITECTURE.md): the architecture entry point: Task Index, layers, integration footguns, test locations and the deep docs.
+
 ## Glossary
 
 - **Drop rate** — how fast a drive's free space is falling, as the least-squares slope of the free-space samples over the sample window, in bytes per second.
