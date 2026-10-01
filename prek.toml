@@ -1,4 +1,12 @@
 [[repos]]
+repo = "builtin"
+
+[[repos.hooks]]
+id = "mixed-line-ending"
+args = ["--fix=lf"]
+exclude = '\.(bat|cmd)$'
+
+[[repos]]
 repo = "local"
 
 [[repos.hooks]]
